@@ -255,3 +255,28 @@ html, body { margin: 0; background: var(--bg); color: var(--ink); overflow-x: hi
 .wird-app .tab.on svg { stroke-width: 2.4; }
 
 @media (prefers-reduced-motion: reduce) { .wird-app *, .wird-app *::before { transition: none !important; animation: none !important; } }
+
+/* group khatmah */
+.wird-app .hero.group { padding-bottom: 14px; }
+.wird-app .glabel { margin: 16px 0 0; font-size: 0.9rem; opacity: .85; }
+.wird-app .gspan { margin: 2px 0 2px; font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+.wird-app .gtick { appearance: none; display: grid; place-items: center; width: 132px; height: 132px; margin: 14px auto 6px; border-radius: 50%; border: 0; background: var(--done-ink); color: var(--done); box-shadow: 0 0 0 10px rgba(255,255,255,.12), 0 14px 30px rgba(0,0,0,.2); cursor: pointer; transition: transform .12s; }
+.wird-app .gtick svg { width: 64px; height: 64px; stroke-width: 2.8; }
+.wird-app .gtick:active { transform: scale(.93); }
+.wird-app .gdone { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 16px 0 16px; }
+.wird-app .gdone strong { font-size: 1.5rem; font-weight: 800; }
+.wird-app .gdone span:last-child { opacity: .85; }
+.wird-app .gcheck { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: var(--done-ink); color: var(--done); margin-bottom: 8px; }
+.wird-app .gcheck svg { width: 40px; height: 40px; stroke-width: 2.8; }
+.wird-app .hero .cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.wird-app .hero .cta svg { width: 20px; height: 20px; }
+.wird-app .gnext { margin: 10px 0 0; font-size: 0.9rem; opacity: .9; }
+.wird-app .linkbtn.light { color: inherit; padding: 4px; }
+.wird-app .gtools { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+.wird-app .gbtn { appearance: none; display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 0.86rem; font-weight: 600; color: inherit; text-decoration: none; background: rgba(255,255,255,.12); border: 0; border-radius: 999px; padding: 8px 14px; min-height: 40px; cursor: pointer; }
+.wird-app .gbtn svg { width: 16px; height: 16px; }
+.wird-app .gpastebox { margin-top: 12px; text-align: left; }
+.wird-app .gpastebox textarea { font-family: inherit; font-size: 15px; min-height: 76px; }
+.wird-app .gpastebox .msg.err { color: var(--done-ink); font-weight: 600; }
+.wird-app .types { grid-template-columns: repeat(4, 1fr); }
+.wird-app .tcard { padding: 14px 4px; font-size: 0.82rem; }

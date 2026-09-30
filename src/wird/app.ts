@@ -2,7 +2,7 @@
 import {
   MAX_WIRDS, PAGES, ayatCount, ayatOnPage, cleanState, cleanWird, compress, dateAgo, dayKey, daysAgo, juzOf, juzPages,
   mergeStates, paceDays, pageOf, parseRanges, rangeText, selPages, sittingsDone, stableKey, surahName as nm, targetForDays,
-  describeSel, emptySel,
+  describeSel, emptySel, groupDue, parseGroupMessage, portionMessage, tickMessage, absPage, fromAbs,
 } from "./core";
 import { DEFAULT_THEME, PAL, themeCss } from "./themes";
 import {
@@ -23,7 +23,7 @@ const WEEKDAY_MON0 = d => (d.getDay() + 6) % 7;
 // ---------- app ----------
 export function createWirdApp(root, opts = {}) {
   const $ = id => root.querySelector("#" + id);
-  const TYPES = { khatmah: { label: "Khatmah", round: "Khatmah", name: "Khatmah" }, hifz: { label: "Hifz revision", round: "Cycle", name: "Hifz revision" }, custom: { label: "Other", round: "Round", name: "My wird" } };
+  const TYPES = { khatmah: { label: "Khatmah", round: "Khatmah", name: "Khatmah" }, hifz: { label: "Hifz revision", round: "Cycle", name: "Hifz revision" }, custom: { label: "Other", round: "Round", name: "My wird" }, group: { label: "Group", round: "Khatmah", name: "Group khatmah" } };
   let state;
   try { state = cleanState(JSON.parse(localStorage.getItem(KEY))); } catch (e) { state = cleanState(null); }
 
@@ -226,6 +226,8 @@ export function createWirdApp(root, opts = {}) {
     book: I("M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"),
     loop: I("M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"),
     list: I("M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01", 2.2),
+    group: I("M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.3a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"),
+    send: I("M21 3 10 14M21 3l-7 18-4-7-7-4z"),
   };
   const RC = r => 2 * Math.PI * r;
   const ring = (size, frac, cls) => {
@@ -314,9 +316,10 @@ export function createWirdApp(root, opts = {}) {
       (state.wirds.length ? '<div class="streak' + (st ? " on" : "") + '" aria-label="' + plural(st, "day", "days") + ' streak">' + ICON.flame + "<b>" + st + "</b></div>" : "") + "</header>";
     if (!w) {
       h += '<section class="welcome"><div class="wring">' + ring(120, 0.72, "big") + '<span class="ar" lang="ar">وِرد</span></div><h2>Keep your place in every wird</h2><p>Track your page, the ayah you stopped at, and a gentle daily goal.</p>' +
-        '<div class="choices">' + typeCard("khatmah", ICON.book, "Khatmah", "Read the whole Qur'an, cover to cover") + typeCard("hifz", ICON.loop, "Hifz revision", "Cycle through what you've memorised") + typeCard("custom", ICON.list, "Something else", "Any juz, surahs or pages") + "</div></section>";
+        '<div class="choices">' + typeCard("khatmah", ICON.book, "Khatmah", "Read the whole Qur'an, cover to cover") + typeCard("hifz", ICON.loop, "Hifz revision", "Cycle through what you've memorised") + typeCard("group", ICON.group, "Group khatmah", "Tick off your daily share with a WhatsApp group") + typeCard("custom", ICON.list, "Something else", "Any juz, surahs or pages") + "</div></section>";
       paint(h, "today"); bindHome(null); return;
     }
+    if (w.type === "group") { h += switcher(w) + groupHero(w) + nextUpHtml() + weekCard(); if (state.wirds.length < MAX_WIRDS) h += '<button class="addrow" data-new="">' + ICON.plus + "<span>Add a wird</span></button>"; paint(h, "today"); bindHome(w); bindGroup(w); return; }
     const { list, i } = posOf(w), tn = todayN(w), goal = w.target || 0, met = goal && tn >= goal, left = list.length - i;
     const sit = goal && w.parts > 1 ? sittingsDone(goal, w.parts, tn) : -1;
     h += switcher(w);
@@ -327,12 +330,7 @@ export function createWirdApp(root, opts = {}) {
       '<div class="hquick" role="group" aria-label="Log pages read">' + [1, 2, 5, 10].map(n => '<button class="qb" data-q="' + n + '" aria-label="Log ' + plural(n, "page", "pages") + '">+' + n + "</button>").join("") + "</div>" +
       '<button class="cta" data-open="' + esc(w.id) + '">Open page ' + w.page + "</button></section>";
     h += nextUpHtml();
-    let week = "", days = 0;
-    for (let d = 6; d >= 0; d--) {
-      const on = state.wirds.some(x => (x.log[daysAgo(d)] || 0) > 0); if (on) days++;
-      week += '<span class="' + (on ? "on" : "") + (d === 0 ? " now" : "") + '"><i>' + (on ? ICON.check : "") + "</i>" + (d === 0 ? "Today" : dateAgo(d).toLocaleDateString("en-GB", { weekday: "short" }).slice(0, 2)) + "</span>";
-    }
-    h += '<section class="card"><div class="card-h"><h2>This week</h2><span class="muted">' + days + " of 7 days</span></div><div class=\"week\">" + week + "</div></section>";
+    h += weekCard();
     const pct = Math.round(i / list.length * 100);
     h += '<section class="card"><div class="card-h"><h2>' + esc(w.round) + " " + w.cycle + '</h2><span class="muted">' + pct + '%</span></div><div class="track"><i style="width:' + pct + '%"></i></div><p class="muted small">' +
       plural(left, "page", "pages") + " to go" + (goal ? " · finishes around " + finishText(w, left) : "") + "</p></section>";
@@ -340,6 +338,79 @@ export function createWirdApp(root, opts = {}) {
     paint(h, "today");
     bindHome(w);
   }
+  function weekCard() {
+    let week = "", days = 0;
+    for (let d = 6; d >= 0; d--) {
+      const on = state.wirds.some(x => (x.log[daysAgo(d)] || 0) > 0); if (on) days++;
+      week += '<span class="' + (on ? "on" : "") + (d === 0 ? " now" : "") + '"><i>' + (on ? ICON.check : "") + "</i>" + (d === 0 ? "Today" : dateAgo(d).toLocaleDateString("en-GB", { weekday: "short" }).slice(0, 2)) + "</span>";
+    }
+    return '<section class="card"><div class="card-h"><h2>This week</h2><span class="muted">' + days + " of 7 days</span></div><div class=\"week\">" + week + "</div></section>";
+  }
+
+  // ---------- group khatmah ----------
+  // One big tick for today's portion (or everything owed), then one tap to send the tick to the group.
+  const span = (a, b) => "Pages " + a + "–" + b;
+  const tickedToday = w => w.lastTick && w.lastTick.day === dayKey();
+  function groupHero(w) {
+    const due = groupDue(w), done = tickedToday(w), size = w.target || 10;
+    let h = '<section class="hero group' + (done ? " met" : "") + '"><div class="hero-top"><span class="hname">' + esc(w.name) + '</span><span class="hpill">Khatmah ' + w.cycle + "</span></div>";
+    if (done) {
+      const t = w.lastTick;
+      h += '<div class="gdone"><span class="gcheck">' + ICON.check + '</span><strong>' + span(t.from, t.to) + '</strong><span>done today. Alhamdulillah.</span></div>' +
+        '<button class="cta" id="gsend">' + ICON.send + "Send ✅ to the group</button>" + (tickMessage(t.from, t.to, size) !== "✅" ? '<p class="gnext">Sends: ' + esc(tickMessage(t.from, t.to, size)) + "</p>" : "") +
+        '<p class="gnext">Next: ' + span(due.from, due.to) + ' · <button class="linkbtn light" id="gahead">read ahead</button></p>';
+    } else {
+      h += '<p class="glabel">' + (due.behind ? "Catch up with the group" : "Today's portion") + "</p><p class=\"gspan\">" + span(due.from, due.to) + "</p>" +
+        '<p class="hsub">' + esc(rangeText(due.from).split(" to ")[0]) + " · Juz " + juzOf(due.from) + (due.behind ? " · " + plural(due.behind, "portion", "portions") + " behind" : "") + "</p>" +
+        '<button class="gtick" id="gtick" aria-label="Mark ' + span(due.from, due.to) + ' as read">' + ICON.check + "</button><p class=\"hsub\">Tap when you've read it</p>";
+    }
+    h += '<div class="gtools">' + (w.role === "organiser" ? '<button class="gbtn" id="gpost">' + ICON.send + "Post next portion</button>" : "") + '<button class="gbtn" id="gpaste">Update from the group</button><a class="gbtn" href="https://quran.com/page/' + due.from + '" target="_blank" rel="noopener">Open page ' + due.from + "</a></div>";
+    h += '<div class="gpastebox" id="gbox" hidden><textarea id="gtext" placeholder="Paste the group\'s message, e.g. Khatmah (11) Page (232) to page (241)" aria-label="Group message"></textarea><div class="row"><button class="btn primary" id="gapply">Use this</button></div><p class="msg" id="gmsg" role="status"></p></div>';
+    return h + "</section>";
+  }
+  async function sendText(text) {
+    if (opts.share && await opts.share(text)) return true;
+    try { if (!opts.share && navigator.share) { await navigator.share({ text }); return true; } } catch (e) { if (e && e.name === "AbortError") return true; }
+    try { window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); return true; } catch (e) { return false; }
+  }
+  // Applies a message from the group (pasted, or shared into the app from WhatsApp).
+  function applyGroupMessage(w, text) {
+    const r = parseGroupMessage(text);
+    if (!r) return "No page range found. It should look like Page (232) to page (241).";
+    const cyc = r.khatmah || (w.groupCycle || w.cycle);
+    w.groupAt = r.from; w.groupCycle = cyc;
+    if (r.to - r.from + 1 >= 3 && r.to - r.from + 1 <= 60 && !/✅|✔|☑/.test(String(text))) w.target = r.to - r.from + 1;
+    // A member who has not started yet, or is in an older khatmah the group finished, joins where the group is.
+    if (absPage(w.cycle, w.page) < absPage(cyc, 1) && r.khatmah && r.khatmah > w.cycle) { w.cycle = r.khatmah; w.page = r.from; }
+    touchW(w); save();
+    const due = groupDue(w);
+    return due.behind ? "Group is on " + span(r.from, r.to) + ". You're " + plural(due.behind, "portion", "portions") + " behind." : "Up to date with the group.";
+  }
+  function bindGroup(w) {
+    const size = w.target || 10;
+    if ($("gtick")) $("gtick").onclick = () => {
+      const due = groupDue(w), before = JSON.stringify(w), cyc = w.cycle;
+      step(w, due.pages);
+      w.lastTick = { from: due.from, to: due.to, day: dayKey() };
+      touchW(w); save(); vibrate(); home();
+      toast(w.cycle > cyc ? "Khatmah " + cyc + " complete. Alhamdulillah!" : "Ticked " + span(due.from, due.to), () => { Object.assign(w, JSON.parse(before)); stampDay(w, dayKey()); touchW(w); save(); home(); });
+    };
+    if ($("gsend")) $("gsend").onclick = () => sendText(tickMessage(w.lastTick.from, w.lastTick.to, size));
+    if ($("gahead")) $("gahead").onclick = () => { w.lastTick = null; touchW(w); save(); home(); };
+    if ($("gpost")) $("gpost").onclick = () => {
+      const base = w.groupAt ? absPage(w.groupCycle || w.cycle, w.groupAt) + size : absPage(w.cycle, w.page);
+      const f = fromAbs(base), to = Math.min(604, f.page + size - 1);
+      w.groupAt = f.page; w.groupCycle = f.cycle; touchW(w); save();
+      sendText(portionMessage(f.cycle, f.page, to)); home();
+    };
+    if ($("gpaste")) $("gpaste").onclick = async () => {
+      $("gbox").hidden = false;
+      try { const t = navigator.clipboard && navigator.clipboard.readText ? await navigator.clipboard.readText() : ""; if (parseGroupMessage(t)) $("gtext").value = t; } catch (e) {}
+      $("gtext").focus();
+    };
+    if ($("gapply")) $("gapply").onclick = () => { const m = applyGroupMessage(w, $("gtext").value); const ok = !/^No page/.test(m); if (ok) { home(); toast(m); } else msg("gmsg", m, 0); };
+  }
+
   function typeCard(type, icon, title, sub) { return '<button class="choice" data-new="' + type + '"><span class="cicon">' + icon + "</span><span><strong>" + title + "</strong><small>" + sub + "</small></span></button>"; }
   function bindHome(w) {
     if (opts.onHome) opts.onHome(null);
@@ -419,13 +490,13 @@ export function createWirdApp(root, opts = {}) {
 
   // ---------- add / edit ----------
   let draft = null;
-  function newDraft(type) { type = TYPES[type] ? type : "khatmah"; return { id: null, type, name: TYPES[type].name, sel: emptySel(), mode: "juz", dir: 1, target: 0, parts: 0, start: "", q: "" }; }
+  function newDraft(type) { type = TYPES[type] ? type : "khatmah"; return { id: null, type, name: TYPES[type].name, sel: emptySel(), mode: "juz", dir: 1, target: type === "group" ? 10 : 0, parts: 0, start: "", q: "", khatmah: "1", role: "member" }; }
   function draftFrom(w) {
     const sel = w.type === "khatmah" ? emptySel() : w.sel ? { ...emptySel(), ...JSON.parse(JSON.stringify(w.sel)) } : { ...emptySel(), pages: w.ranges };
-    return { id: w.id, type: w.type, name: w.name, sel, mode: sel.juz.length || (!sel.surah.length && !sel.pages) ? "juz" : sel.surah.length ? "surah" : "pages", dir: w.dir || 1, target: w.target || 0, parts: w.parts || 0, start: "", q: "" };
+    return { khatmah: String(w.cycle), role: w.role || "member", id: w.id, type: w.type, name: w.name, sel, mode: sel.juz.length || (!sel.surah.length && !sel.pages) ? "juz" : sel.surah.length ? "surah" : "pages", dir: w.dir || 1, target: w.target || 0, parts: w.parts || 0, start: w.type === "group" ? String(w.page) : "", q: "" };
   }
   function draftPages() {
-    if (draft.type === "khatmah") return parseRanges("1-604");
+    if (draft.type === "khatmah" || draft.type === "group") return parseRanges("1-604");
     const p = selPages(draft.sel);
     return p.length ? p : null;
   }
@@ -437,10 +508,20 @@ export function createWirdApp(root, opts = {}) {
     return Math.max(1, pages.filter(p => (draft.dir === -1 ? p <= from : p >= from)).length);
   }
   function form() {
-    const d = draft, editing = !!d.id, pages = draftPages(), picking = d.type !== "khatmah";
+    const d = draft, editing = !!d.id, pages = draftPages(), picking = d.type !== "khatmah" && d.type !== "group";
     let h = '<header class="bar"><button class="iconbtn" id="back" aria-label="Back">' + ICON.back + '</button><h1>' + (editing ? "Edit wird" : "New wird") + "</h1><span></span></header>";
-    h += '<p class="lbl">What kind?</p><div class="types">' + [["khatmah", ICON.book, "Khatmah"], ["hifz", ICON.loop, "Hifz revision"], ["custom", ICON.list, "Other"]].map(([k, ic, l]) => '<button class="tcard' + (d.type === k ? " on" : "") + '" data-type="' + k + '" aria-pressed="' + (d.type === k) + '">' + ic + "<span>" + l + "</span></button>").join("") + "</div>";
+    h += '<p class="lbl">What kind?</p><div class="types">' + [["khatmah", ICON.book, "Khatmah"], ["group", ICON.group, "Group"], ["hifz", ICON.loop, "Hifz"], ["custom", ICON.list, "Other"]].map(([k, ic, l]) => '<button class="tcard' + (d.type === k ? " on" : "") + '" data-type="' + k + '" aria-pressed="' + (d.type === k) + '">' + ic + "<span>" + l + "</span></button>").join("") + "</div>";
     h += '<label class="lbl" for="fn">Name</label><input type="text" id="fn" maxlength="40" value="' + esc(d.name) + '">';
+    if (d.type === "group") {
+      h += '<p class="hint">Everyone reads the same portion each day. Tap the tick when you have read yours, then send it to the group.</p>';
+      h += '<p class="lbl">Pages each day</p><div class="chips">' + [[5, "5"], [10, "10"], [20, "1 juz"]].map(([v, l]) => '<button class="chip' + (d.target === v ? " on" : "") + '" data-tg="' + v + '">' + l + "</button>").join("") + '</div><div class="row"><input type="number" id="ft" inputmode="numeric" min="1" max="604" value="' + (d.target || "") + '" aria-label="Pages per day"></div>';
+      h += '<label class="lbl" for="fs">' + (editing ? "Your next page" : "Where is the group now?") + '</label><input type="number" id="fs" inputmode="numeric" min="1" max="604" value="' + esc(d.start) + '" placeholder="First page of today\'s portion, e.g. 232">';
+      h += '<label class="lbl" for="fk">Khatmah number</label><input type="number" id="fk" inputmode="numeric" min="1" max="9999" value="' + esc(d.khatmah || "1") + '">';
+      h += '<p class="lbl">Your role</p><div class="seg"><button class="chip' + (d.role !== "organiser" ? " on" : "") + '" data-role="member" aria-pressed="' + (d.role !== "organiser") + '">I tick</button><button class="chip' + (d.role === "organiser" ? " on" : "") + '" data-role="organiser" aria-pressed="' + (d.role === "organiser") + '">I post the portions</button></div>';
+      h += '<div class="savebar"><button class="btn primary wide" id="fsave">' + (editing ? "Save changes" : "Join the khatmah") + '</button></div><p class="msg" id="fmsg" role="status"></p>';
+      if (editing) h += '<button class="btn danger wide" id="fdel">Delete this wird</button>';
+      paint(h); bindForm(editing); return;
+    }
     if (!picking) h += '<p class="hint">All 604 pages, Al-Fatihah to An-Nas. The count goes up each time you finish.</p>';
     else {
       h += '<p class="lbl">' + (d.type === "hifz" ? "What have you memorised?" : "What's included?") + '</p><div class="seg">' + [["juz", "Juz"], ["surah", "Surahs"], ["pages", "Pages"]].map(([k, l]) => '<button class="chip' + (d.mode === k ? " on" : "") + '" data-tab="' + k + '" aria-pressed="' + (d.mode === k) + '">' + l + "</button>").join("") + "</div>";
@@ -473,7 +554,7 @@ export function createWirdApp(root, opts = {}) {
   function toggleIn(list, v, on) { const i = list.indexOf(v); if (on && i < 0) list.push(v); if (!on && i >= 0) list.splice(i, 1); list.sort((a, b) => a - b); }
   function bindForm(editing) {
     const d = draft;
-    const keep = () => { d.name = $("fn").value; if ($("fr")) d.sel.pages = $("fr").value; if ($("fs")) d.start = $("fs").value; if ($("sq")) d.q = $("sq").value; d.target = Math.min(PAGES, Math.max(0, parseInt($("ft").value, 10) || 0)); };
+    const keep = () => { d.name = $("fn").value; if ($("fk")) d.khatmah = $("fk").value; if ($("fr")) d.sel.pages = $("fr").value; if ($("fs")) d.start = $("fs").value; if ($("sq")) d.q = $("sq").value; d.target = Math.min(PAGES, Math.max(0, parseInt($("ft").value, 10) || 0)); };
     const rerender = () => { const y = window.scrollY, l = root.querySelector(".slist"), ls = l ? l.scrollTop : 0; form(); window.scrollTo(0, y); const l2 = root.querySelector(".slist"); if (l2) l2.scrollTop = ls; };
     $("back").onclick = () => go(editing ? "w/" + d.id : "");
     root.querySelectorAll("[data-type]").forEach(b => b.onclick = () => { keep(); const old = TYPES[d.type].name; d.type = b.dataset.type; if (!d.name || d.name === old) d.name = TYPES[d.type].name; rerender(); });
@@ -495,10 +576,12 @@ export function createWirdApp(root, opts = {}) {
     if ($("sq") && d.q) $("sq").oninput();
     if ($("fr")) $("fr").oninput = () => { d.sel.pages = $("fr").value; const p = draftPages(); $("pcount").textContent = parseRanges(d.sel.pages) || !d.sel.pages.trim() ? (p ? plural(p.length, "page", "pages") : "Nothing picked yet") : "Check the page ranges"; };
     if ($("fr")) $("fr").onchange = () => { const p = parseRanges($("fr").value); if (p) { d.sel.pages = compress(p); rerender(); } };
-    $("ft").oninput = () => { const n = parseInt($("ft").value, 10) || 0; $("partsec").hidden = n <= 0; };
+    $("ft").oninput = () => { const n = parseInt($("ft").value, 10) || 0; if ($("partsec")) $("partsec").hidden = n <= 0; };
+    root.querySelectorAll("[data-role]").forEach(b => b.onclick = () => { keep(); d.role = b.dataset.role; rerender(); });
     bindJuzGrid(keep, rerender);
     $("fsave").onclick = () => {
       keep();
+      if (d.type === "group") return saveGroup(editing);
       if (d.type !== "khatmah" && d.sel.pages.trim() && !parseRanges(d.sel.pages)) { msg("fmsg", "Enter page ranges between 1 and 604, like 1-50, 562-604.", 0); return; }
       const p = draftPages();
       if (!p || !p.length) { msg("fmsg", "Pick at least one juz, surah or page range.", 0); return; }
@@ -529,6 +612,21 @@ export function createWirdApp(root, opts = {}) {
       state.gone = [gone, ...(state.gone || []).filter(x => x.id !== d.id)].slice(0, 30);
       save(); go("");
     };
+  }
+  function saveGroup(editing) {
+    const d = draft, s = parseInt(d.start, 10), k = parseInt(d.khatmah, 10) || 1, size = Math.max(1, Math.min(PAGES, d.target || 10));
+    if (d.start !== "" && !(s >= 1 && s <= PAGES)) { msg("fmsg", "Pages run from 1 to 604.", 0); return; }
+    const name = d.name.replace(/\s+/g, " ").trim().slice(0, 40) || TYPES.group.name;
+    if (editing) {
+      const w = find(d.id);
+      Object.assign(w, { name, type: "group", round: "Khatmah", ranges: "1-604", sel: null, target: size, parts: 0, role: d.role, cycle: Math.min(9999, Math.max(1, k)) });
+      if (s) { w.page = s; w.ayah = null; }
+      touchW(w); save(); go("");
+      return;
+    }
+    if (state.wirds.length >= MAX_WIRDS) { msg("fmsg", "That's the most wirds you can keep (" + MAX_WIRDS + "). Delete one first.", 0); return; }
+    const w = cleanWird({ id: Math.random().toString(36).slice(2, 10), name, type: "group", ranges: "1-604", target: size, page: s || 1, cycle: k, role: d.role, groupAt: s || 0, groupCycle: k, log: {}, createdAt: Date.now(), updatedAt: Date.now() });
+    state.wirds.push(w); setFocus(w.id); save(); go("");
   }
   // Tap toggles a juz. Pressing and dragging across tiles sets the whole run to the state of the first tile.
   function bindJuzGrid(keep, rerender) {
@@ -639,6 +737,16 @@ export function createWirdApp(root, opts = {}) {
     else if (current.startsWith("detail:")) { const w = find(current.slice(7)); if (w) detail(w); else go(""); }
     window.scrollTo(0, y);
   }
+  // A message shared into the app (e.g. the group's daily post, long-pressed in WhatsApp > Share > Wird).
+  function receiveShared(text) {
+    const groups = state.wirds.filter(x => x.type === "group");
+    if (!groups.length || !parseGroupMessage(text)) return false;
+    const w = groups.find(x => x.id === (focusW() || {}).id) || groups[0];
+    setFocus(w.id);
+    const m = applyGroupMessage(w, text);
+    go(""); home(); toast(m);
+    return true;
+  }
   window.addEventListener("hashchange", route);
   window.addEventListener("keydown", onKey);
   document.addEventListener("visibilitychange", onVis);
@@ -664,6 +772,7 @@ export function createWirdApp(root, opts = {}) {
       if (current !== "form") rerenderInPlace();
       return state;
     },
+    receiveShared,
     refreshHome() { if (current === "home") { const y = window.scrollY; home(); window.scrollTo(0, y); } },
     destroy() { clearInterval(ticker); clearInterval(topUp); if (!notifier.reliable) Promise.resolve(notifier.sync([])).catch(() => {}); window.removeEventListener("hashchange", route); window.removeEventListener("keydown", onKey); document.removeEventListener("visibilitychange", onVis); }
   };

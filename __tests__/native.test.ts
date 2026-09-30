@@ -20,8 +20,12 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: HTTP,
   SystemBars: { setStyle: vi.fn(async () => {}) },
   SystemBarsStyle: { Dark: "DARK", Light: "LIGHT" },
+  registerPlugin: () => SHARE,
 }))
-import { TEST_ID, fetchCalendar, nativeNotifier } from "../src/native"
+const SHARE = vi.hoisted(() => ({ listeners: [] as any[], pending: "Khatmah (11)\nPage (1) to page (10)" as string | null,
+  take: vi.fn(async () => { const t = SHARE.pending; SHARE.pending = null; return { text: t } }),
+  addListener: vi.fn(async (_e: string, cb: any) => { SHARE.listeners.push(cb) }) }))
+import { TEST_ID, fetchCalendar, nativeNotifier, onSharedText } from "../src/native"
 
 const ICS = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20260930T120200Z\r\nDTEND:20260930T124500Z\r\nSUMMARY:Dhuhr\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
 const at = (m: number) => Date.now() + m * 60000
@@ -88,5 +92,16 @@ describe("native calendar fetch", () => {
     const r = await fetchCalendar("https://example.com/cal.ics")
     expect(r).toMatchObject({ ok: false })
     expect(HTTP.get).not.toHaveBeenCalled()
+  })
+})
+
+describe("text shared into the app", () => {
+  it("delivers a share that arrived before start-up, then later ones", async () => {
+    const got: string[] = []
+    onSharedText((t) => got.push(t))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(got).toEqual(["Khatmah (11)\nPage (1) to page (10)"])
+    SHARE.listeners[0]({ text: "Page (11) to page (20)" })
+    expect(got).toHaveLength(2)
   })
 })

@@ -141,8 +141,8 @@ export function paceDays(w: { target?: number; log?: Record<string, number> }, d
 }
 
 // ---------- cleaning (sync data and backup codes are untrusted) ----------
-const TYPE_ROUND: Record<string, string> = { khatmah: "Khatmah", hifz: "Cycle", custom: "Round" };
-const TYPE_NAME: Record<string, string> = { khatmah: "Khatmah", hifz: "Hifz cycle", custom: "Wird" };
+const TYPE_ROUND: Record<string, string> = { khatmah: "Khatmah", hifz: "Cycle", custom: "Round", group: "Khatmah" };
+const TYPE_NAME: Record<string, string> = { khatmah: "Khatmah", hifz: "Hifz revision", custom: "My wird", group: "Group khatmah" };
 const int = (v: unknown, lo: number, hi: number, dflt: number) => {
   const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.trunc(n))) : dflt;
@@ -197,6 +197,15 @@ export function cleanWird(raw: any, fallbackCreated = 0): any | null {
   trimLog(w);
   w.weak = Array.isArray(raw.weak) ? [...new Set<number>(raw.weak.map((p: unknown) => int(p, 0, PAGES, 0)).filter((p: number) => p && pages.includes(p)))].sort((a, b) => a - b) : [];
   w.sel = cleanSel(raw.sel);
+  if (w.type === "group") {
+    // A group khatmah: everyone reads the same portion of `target` pages; the group's latest known portion is kept.
+    w.ranges = "1-604";
+    if (!w.target) w.target = 10;
+    w.groupAt = strict(raw.groupAt, 1, PAGES);
+    w.groupCycle = w.groupAt ? int(raw.groupCycle, 1, 9999, w.cycle) : 0;
+    w.role = raw.role === "organiser" ? "organiser" : "member";
+    w.lastTick = raw.lastTick && typeof raw.lastTick === "object" && strict(raw.lastTick.from, 1, PAGES) && strict(raw.lastTick.to, 1, PAGES) ? { from: +raw.lastTick.from, to: +raw.lastTick.to, day: typeof raw.lastTick.day === "string" && KEY_RE.test(raw.lastTick.day) ? raw.lastTick.day : "" } : null;
+  }
   // A missing creation time must not be "now": cleaning has to give the same answer every time it runs.
   w.createdAt = int(raw.createdAt, 0, 8.64e15, fallbackCreated);
   w.updatedAt = int(raw.updatedAt, 0, 8.64e15, 0);
@@ -301,4 +310,53 @@ const norm = (v: any): any =>
 // Order-insensitive fingerprint, used to tell whether a merge changed anything.
 export function stableKey(s: any): string {
   return JSON.stringify(norm({ wirds: (s && s.wirds) || [], gone: (s && s.gone) || [], deleted: (s && s.deleted) || {}, theme: (s && s.theme) || null, prayer: (s && s.prayer) || null }));
+}
+
+// ---------- group khatmah ----------
+/** Turns Arabic-Indic and Persian digits into ASCII digits. */
+const asciiDigits = (t: string) => t.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (c) => String((c.charCodeAt(0) & 0xf) % 10));
+
+/**
+ * Reads a group's daily message, e.g. "Khatmah (11)\nPage (232) to page (241)" or "Page 142 - 191 ✅".
+ * Returns whatever it can find, or null when there is no page range.
+ */
+export function parseGroupMessage(text: unknown): { khatmah: number | null; from: number; to: number } | null {
+  const t = asciiDigits(String(text || ""));
+  const m = t.match(/(?:pages?|pg|p\.|صفحة|صفحه)\s*\(?\s*(\d{1,3})\s*\)?\s*(?:to|till|until|-|–|—|الى|إلى)\s*(?:(?:pages?|pg|p\.|صفحة|صفحه)\s*)?\(?\s*(\d{1,3})\s*\)?/i);
+  if (!m) return null;
+  const from = +m[1], to = +m[2];
+  if (from < 1 || to > PAGES || from > to) return null;
+  const k = t.match(/(?:khatm[a-z]*|ختمة|ختمه)\s*\(?\s*(?:no\.?\s*|#)?(\d{1,4})\s*\)?/i);
+  return { khatmah: k ? +k[1] : null, from, to };
+}
+
+/** Pages since the start of the Qur'an across khatmahs, so positions in different rounds compare. */
+export const absPage = (cycle: number, page: number) => (Math.max(1, cycle) - 1) * PAGES + page;
+export const fromAbs = (n: number) => ({ cycle: Math.floor((n - 1) / PAGES) + 1, page: ((n - 1) % PAGES) + 1 });
+
+/** What a group member should tick next: the next portion, or everything up to the end of the group's current one. */
+export function groupDue(w: any): { from: number; to: number; pages: number; behind: number; cycleEnd: number } {
+  const size = Math.max(1, w.target || 10);
+  const mine = absPage(w.cycle, w.page);
+  let end = mine + size - 1;
+  let behind = 0;
+  if (w.groupAt) {
+    const groupEnd = absPage(w.groupCycle || w.cycle, w.groupAt) + size - 1;
+    if (groupEnd > end) { behind = Math.ceil((groupEnd - end) / size); end = groupEnd; }
+  }
+  // A portion never runs past the end of the mushaf: the next khatmah starts fresh at page 1.
+  const cycleEnd = Math.ceil(mine / PAGES) * PAGES;
+  if (!behind && end > cycleEnd) end = cycleEnd;
+  const f = fromAbs(mine), t = fromAbs(end);
+  return { from: f.page, to: t.page, pages: end - mine + 1, behind, cycleEnd: t.cycle };
+}
+
+/** The message a member sends: just a tick for one portion, the group's catch-up style for more. */
+export function tickMessage(from: number, to: number, size: number): string {
+  const n = to >= from ? to - from + 1 : PAGES - from + 1 + to;
+  return n <= size ? "✅" : "Page (" + from + ") to (" + to + ") ✅";
+}
+/** The organiser's daily post, in the group's usual format. */
+export function portionMessage(khatmah: number, from: number, to: number): string {
+  return "Khatmah (" + khatmah + ")\nPage (" + from + ") to page (" + to + ")";
 }

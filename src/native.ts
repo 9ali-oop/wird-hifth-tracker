@@ -1,5 +1,5 @@
 // Phone-only features, loaded when running inside the Android (or iOS) app.
-import { Capacitor, CapacitorHttp, SystemBars, SystemBarsStyle } from "@capacitor/core"
+import { Capacitor, CapacitorHttp, SystemBars, SystemBarsStyle, registerPlugin } from "@capacitor/core"
 import { LocalNotifications } from "@capacitor/local-notifications"
 import { Share } from "@capacitor/share"
 import { readCalendar } from "./wird/calendar"
@@ -68,4 +68,13 @@ export async function share(text: string): Promise<boolean> {
 
 export function setBars(dark: boolean) {
   SystemBars.setStyle({ style: dark ? SystemBarsStyle.Dark : SystemBarsStyle.Light }).catch(() => {})
+}
+
+// Text shared into the app (Android share sheet > Wird). take() returns a share that arrived before the app loaded.
+type ShareInPlugin = { take(): Promise<{ text?: string | null }>; addListener(e: "shared", cb: (d: { text: string }) => void): Promise<unknown> }
+const ShareIn = registerPlugin<ShareInPlugin>("ShareIn")
+export function onSharedText(cb: (text: string) => void) {
+  if (Capacitor.getPlatform() !== "android") return
+  ShareIn.take().then((r) => { if (r && r.text) cb(r.text) }).catch(() => {})
+  ShareIn.addListener("shared", (d) => { if (d && d.text) cb(d.text) }).catch(() => {})
 }

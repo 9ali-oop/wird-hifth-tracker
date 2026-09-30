@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { QDATA as Q } from "../src/wird/quran-data"
+import { groupDue, parseGroupMessage, tickMessage, portionMessage, cleanWird as cw } from "../src/wird/core"
 import {
   ayatOnPage, cleanState, cleanWird, compress, dayKey, daysAgo, juzOf, juzPages, mergeStates, pageEnd, pageOf,
   paceDays, parseRanges, rangeText, selPages, sittingsDone, stableKey, surahPages, targetForDays,
@@ -261,5 +262,37 @@ describe("merging two devices", () => {
     const a = A()
     expect(mergeStates(null, a)).toBe(a)
     expect(mergeStates(a, null)).toBe(a)
+  })
+})
+
+describe("group messages", () => {
+  it.each([
+    ["Khatmah (11)\nPage (232) to page (241)", { khatmah: 11, from: 232, to: 241 }],
+    ["Khatma  (1)\nPage (32) to page (41)\nبارك الله في الجميع", { khatmah: 1, from: 32, to: 41 }],
+    ["First khatmah \n\nFrom page (22) to page (31)", { khatmah: null, from: 22, to: 31 }],
+    ["Page (142) to (191) ✅", { khatmah: null, from: 142, to: 191 }],
+    ["pages 10-20", { khatmah: null, from: 10, to: 20 }],
+    ["ختمة (٣)\nصفحة (٢٢) الى صفحة (٣١)", { khatmah: 3, from: 22, to: 31 }],
+  ])("reads %j", (msg, want) => { expect(parseGroupMessage(msg)).toEqual(want) })
+  it.each(["✅", "Where is today's pages", "Page 431", "Page (300) to page (200)", "Page (600) to page (700)", "", null])("ignores %j", (m) => {
+    expect(parseGroupMessage(m)).toBeNull()
+  })
+  it("works out what is due, including catch-up and the end of the mushaf", () => {
+    const w = (o: any) => cw({ id: "g1", type: "group", page: 232, cycle: 11, target: 10, ...o })!
+    expect(groupDue(w({}))).toMatchObject({ from: 232, to: 241, pages: 10, behind: 0 })
+    expect(groupDue(w({ page: 142, groupAt: 182, groupCycle: 11 }))).toMatchObject({ from: 142, to: 191, pages: 50, behind: 4 })
+    expect(groupDue(w({ page: 250, groupAt: 182, groupCycle: 11 }))).toMatchObject({ from: 250, to: 259, behind: 0 })
+    expect(groupDue(w({ page: 601 }))).toMatchObject({ from: 601, to: 604, pages: 4 })
+    expect(groupDue(w({ page: 595, cycle: 10, groupAt: 2, groupCycle: 11 }))).toMatchObject({ from: 595, to: 11, pages: 21, behind: 2 })
+  })
+  it("words messages the way the group does", () => {
+    expect(tickMessage(232, 241, 10)).toBe("✅")
+    expect(tickMessage(601, 604, 10)).toBe("✅")
+    expect(tickMessage(142, 191, 10)).toBe("Page (142) to (191) ✅")
+    expect(portionMessage(11, 242, 251)).toBe("Khatmah (11)\nPage (242) to page (251)")
+  })
+  it("cleans group fields", () => {
+    const g = cw({ id: "g", type: "group", groupAt: 9999, role: "boss", lastTick: { from: "x" } })!
+    expect(g).toMatchObject({ ranges: "1-604", target: 10, groupAt: 0, role: "member", lastTick: null })
   })
 })

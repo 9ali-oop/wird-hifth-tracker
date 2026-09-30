@@ -8,7 +8,13 @@ It runs as an Android app and as a web app from the same code. Everything is sto
 
 ## Features
 
-- **Wirds**: khatmah, hifz cycle (pick memorised surahs or juz) or custom page ranges, forwards or from An-Nas backwards.
+- **Wirds**: khatmah, group khatmah, hifz revision or anything else. Pick any mix of juz (tap or drag across the grid),
+  surahs and page ranges, e.g. juz 2 to 6 and 12 to 15 plus Al-Mulk. Forwards or from An-Nas backwards.
+- **Group khatmah** (made for WhatsApp groups where everyone reads the same pages and replies ✅): one big tick marks
+  today's portion done, then "Send ✅ to the group" opens the share sheet. Fell behind? Share the organiser's
+  "Khatmah (11) Page (232) to page (241)" message into Wird (or paste it) and one tick catches you up, sending
+  "Page (142) to (241) ✅" the way the group does. Organisers get "Post next portion" in the group's format.
+- **Today, Progress, Settings** tabs. Today is one card: a daily-goal ring, +1/+2/+5/+10 logging and Open page.
 - **One-tap logging**: - / + and +2, +5, +10, +20 with undo, arrow keys on a keyboard, ayah bookmark, jump to any ayah.
 - **Progress at a glance**: a ring around the page number, pages to go, finish date with ahead/behind,
   a 7-day chart, a 5-week consistency map and a tappable juz map.

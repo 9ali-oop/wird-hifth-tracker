@@ -47,7 +47,7 @@ describe("first run", () => {
   })
   it("offers the three wird types", async () => {
     expect($$(".choice").map((b) => b.textContent)).toEqual([
-      expect.stringContaining("Khatmah"), expect.stringContaining("Hifz revision"), expect.stringContaining("Something else"),
+      expect.stringContaining("Khatmah"), expect.stringContaining("Hifz revision"), expect.stringContaining("Group khatmah"), expect.stringContaining("Something else"),
     ])
   })
 })
@@ -517,5 +517,84 @@ describe("today screen", () => {
     await go("#progress"); expect($(".tab.on").textContent).toBe("Progress")
     await go("#settings"); expect($(".tab.on").textContent).toBe("Settings")
     await go("#w/" + only().id); expect($(".tabs")).toBeNull()
+  })
+})
+
+describe("group khatmah", () => {
+  const join = async (start = "232", k = "11", role = "") => {
+    await go("#new/group"); await type("#fs", start); await type("#fk", k)
+    if (role) await click(`[data-role="${role}"]`)
+    await click("#fsave")
+  }
+  it("joining puts you on the group's portion, 10 pages by default", async () => {
+    await join()
+    expect(only()).toMatchObject({ type: "group", page: 232, cycle: 11, target: 10, groupAt: 232, role: "member" })
+    expect($(".gspan").textContent).toBe("Pages 232–241")
+    expect($(".hpill").textContent).toBe("Khatmah 11")
+  })
+  it("one tap ticks the portion, then sends a plain tick to the group", async () => {
+    const share = vi.fn(async () => true)
+    await boot(undefined, ) ; app.destroy(); app = createWirdApp(root, { share }); await tick()
+    await join()
+    await click("#gtick")
+    expect(only().page).toBe(242)
+    expect(only().log[dayKey()]).toBe(10)
+    expect($(".gdone strong").textContent).toBe("Pages 232–241")
+    await click("#gsend")
+    expect(share).toHaveBeenCalledWith("✅")
+    expect($(".gnext").textContent).toContain("Pages 242–251")
+  })
+  it("the tick can be undone", async () => {
+    await join(); await click("#gtick"); await click(".toast button")
+    expect(only().page).toBe(232)
+    expect($("#gtick")).toBeTruthy()
+  })
+  it("pasting the organiser's message shows you're behind, and one tick catches up in the group's style", async () => {
+    const share = vi.fn(async () => true)
+    app.destroy(); app = createWirdApp(root, { share }); await tick()
+    await join("142")
+    await click("#gpaste")
+    ;($("#gtext") as HTMLTextAreaElement).value = "Khatmah (11)\nPage (182) to page (191)"
+    await click("#gapply")
+    expect($(".toast").textContent).toMatch(/4 portions behind/)
+    expect($(".gspan").textContent).toBe("Pages 142–191")
+    await click("#gtick")
+    expect(only().page).toBe(192)
+    await click("#gsend")
+    expect(share).toHaveBeenCalledWith("Page (142) to (191) ✅")
+  })
+  it("a message that is not a portion is refused with a hint", async () => {
+    await join(); await click("#gpaste")
+    ;($("#gtext") as HTMLTextAreaElement).value = "Where is today's pages?"
+    await click("#gapply")
+    expect($("#gmsg").textContent).toMatch(/No page range/)
+  })
+  it("the end of the mushaf closes the khatmah and the next starts at page 1", async () => {
+    await join("601", "11"); await go("")
+    expect($(".gspan").textContent).toBe("Pages 601–604")
+    await click("#gtick")
+    expect(only()).toMatchObject({ page: 1, cycle: 12 })
+    expect($(".toast").textContent).toMatch(/Khatmah 11 complete/)
+  })
+  it("the organiser posts the next portion in the group's format", async () => {
+    const share = vi.fn(async () => true)
+    app.destroy(); app = createWirdApp(root, { share }); await tick()
+    await join("232", "11", "organiser")
+    await click("#gpost")
+    expect(share).toHaveBeenLastCalledWith("Khatmah (11)\nPage (242) to page (251)")
+    expect(only().groupAt).toBe(242)
+  })
+  it("a message shared into the app from WhatsApp updates the group wird", async () => {
+    await join("142")
+    expect(app.receiveShared("Khatmah (11)\nPage (222) to page (231)")).toBe(true)
+    expect(only().groupAt).toBe(222)
+    expect($(".gspan").textContent).toBe("Pages 142–231")
+    expect(app.receiveShared("hello")).toBe(false)
+  })
+  it("falls back to a WhatsApp link when there is no share sheet", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null)
+    await join(); await click("#gtick"); await click("#gsend")
+    expect(open).toHaveBeenCalledWith("https://wa.me/?text=%E2%9C%85", "_blank")
+    open.mockRestore()
   })
 })
