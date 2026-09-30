@@ -251,5 +251,4 @@ export function reminderText(r: { prayer: Prayer; jamat: number; pages: number }
   return "Read " + r.pages + (r.pages === 1 ? " page" : " pages") + " " + (s.offset === 0 ? "at " : s.offset + " min " + (s.dir === -1 ? "before " : "after ")) + label + " jamat (" + fmtTime(r.jamat) + ")";
 }
 
-// Calendar link safety and trimming live in convex/lib so the backend action is self-contained.
-export { filterIcsWindow, normalizeCalendarUrl } from "../../convex/lib/calendar";
+export { filterIcsWindow, normalizeCalendarUrl } from "./calendar";

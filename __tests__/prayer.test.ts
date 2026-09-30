@@ -230,3 +230,27 @@ describe("trimming a large calendar", () => {
   })
   it("handles empty input", () => { expect(filterIcsWindow("", 0, 1)).toBe("\r\n") })
 })
+
+describe("reading a calendar link", async () => {
+  const { readCalendar } = await import("../src/wird/calendar")
+  const ok = (data: unknown, extra: any = {}) => async () => ({ status: 200, data, ...extra })
+  const now = Date.UTC(2026, 8, 30)
+  it("returns the trimmed calendar on success", async () => {
+    const r = await readCalendar("https://calendar.google.com/x/basic.ics", ok(ICS), now)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(parseIcs(r.ics).events.length).toBeGreaterThan(0)
+  })
+  it.each([
+    ["bad link", "https://example.com/x.ics", ok(ICS), /does not look like a calendar link/],
+    ["http error", "https://calendar.google.com/x", async () => ({ status: 404, data: "" }), /did not work \(404\)/],
+    ["network error", "https://calendar.google.com/x", async () => { throw new Error("offline") }, /Could not reach/],
+    ["not a calendar", "https://calendar.google.com/x", ok("<html>login</html>"), /did not return a calendar/],
+    ["binary data", "https://calendar.google.com/x", ok({ a: 1 }), /did not return a calendar/],
+    ["too large", "https://calendar.google.com/x", ok("BEGIN:VCALENDAR" + "x".repeat(5_000_001)), /too large/],
+    ["redirect elsewhere", "https://calendar.google.com/x", ok(ICS, { url: "https://evil.example/x" }), /redirected/],
+  ])("%s", async (_n, url, get, re) => {
+    const r = await readCalendar(url as string, get as any, now)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.message).toMatch(re as RegExp)
+  })
+})

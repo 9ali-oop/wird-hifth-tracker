@@ -79,6 +79,7 @@ describe("prayer reminder settings", () => {
     expect($$('input[type="time"]')).toHaveLength(5)
   })
   it("the calendar link stays on this device and is never part of the synced state", async () => {
+    await boot(withWird, { fetchCalendar: vi.fn() })
     await set("#ical", "https://calendar.google.com/calendar/ical/secret/basic.ics")
     expect(localStorage.getItem(ICAL)).toContain("secret")
     expect(JSON.stringify(app.getState())).not.toContain("secret")
@@ -87,10 +88,14 @@ describe("prayer reminder settings", () => {
 })
 
 describe("reading a calendar", () => {
-  it("without a signed-in fetcher it says so", async () => {
-    await set("#ical", "https://calendar.google.com/x/basic.ics")
+  it("in a plain browser it explains the calendar link is an app feature, with no dead field", async () => {
+    expect($("#ical")).toBeNull()
+    expect($("#fold-prayer").textContent).toMatch(/works in the Wird Android app/)
+  })
+  it("asks for a link before reading", async () => {
+    await boot(withWird, { fetchCalendar: vi.fn() })
     await click("#isync")
-    expect($("#pstat").textContent).toMatch(/Sign in/)
+    expect($("#pstat").textContent).toMatch(/Paste a calendar link/)
   })
   it("fills the timetable from the calendar and shows the counts", async () => {
     const fetchCalendar = vi.fn().mockResolvedValue({ ok: true, ics: sampleIcs() })
@@ -240,9 +245,8 @@ describe("notifications", () => {
     await boot({ ...withWird, prayer: { prayers: ["asr"], pages: 4, offset: 15, dir: -1, updatedAt: 2 } })
     await click("#ptest")
     expect(shown).toHaveLength(1)
-    expect(shown[0].title).toBe("Wird")
-    expect(shown[0].body).toMatch(/Read 4 pages 15 min before Asr jamat/)
-    expect(shown[0].body).toContain("Hifz cycle, page 143")
+    expect(shown[0].title).toBe("Read 4 pages before Asr")
+    expect(shown[0].body).toMatch(/^Asr jamat \d\d:\d\d · 15 min before · Hifz cycle$/)
   })
   it("fires at the reminder time and not before", async () => {
     const { shown } = fakeNotification("granted")
@@ -255,7 +259,8 @@ describe("notifications", () => {
     expect(shown).toHaveLength(0)
     await vi.advanceTimersByTimeAsync(16 * 60000) // 13:16
     expect(shown).toHaveLength(1)
-    expect(shown[0].body).toContain("Read 3 pages 30 min before Dhuhr jamat (13:45)")
+    expect(shown[0].title).toBe("Read 3 pages before Dhuhr")
+    expect(shown[0].body).toBe("Dhuhr jamat 13:45 · 30 min before · Hifz cycle")
     await vi.advanceTimersByTimeAsync(60 * 60000)
     expect(shown).toHaveLength(1) // once only
   })
@@ -293,5 +298,97 @@ describe("syncing reminder settings between devices", () => {
     await click("#imp"); await click("#imp")
     expect(app.getState().wirds[0].id).toBe("old1")
     expect(P().prayers).toEqual(["dhuhr"])
+  })
+})
+
+describe("platform notifier contract", () => {
+  const fakeNotifier = (over: any = {}) => {
+    const n: any = {
+      reliable: true, horizonMs: 14 * 86400000, max: 60, calls: [] as any[],
+      status: vi.fn(async () => "granted"), request: vi.fn(async () => "granted"),
+      sync: vi.fn(async (list: any[]) => { n.calls.push(list) }), test: vi.fn(async () => true), ...over,
+    }
+    return n
+  }
+  const manual = { mode: "manual", manual: { fajr: "06:00", dhuhr: "13:45", asr: "16:15" }, prayers: ["fajr", "dhuhr", "asr"], offset: 30, dir: -1, pages: 3, updatedAt: 9 }
+  it("does not touch scheduled reminders until the permission state is known", async () => {
+    let release: (v: string) => void = () => {}
+    const n = fakeNotifier({ status: vi.fn(() => new Promise((r) => { release = r })) })
+    await boot({ ...withWird, prayer: manual }, { notifier: n })
+    expect(n.sync).not.toHaveBeenCalled()
+    release("granted"); await tick(); await tick()
+    expect(n.sync).toHaveBeenCalledTimes(1)
+  })
+  it("schedules two weeks ahead with stable unique ids, capped at the notifier's limit", async () => {
+    const n = fakeNotifier()
+    await boot({ ...withWird, prayer: manual }, { notifier: n })
+    await tick(); await tick()
+    const list = n.calls.at(-1)
+    expect(list.length).toBeGreaterThanOrEqual(39) // 3 prayers x 13-14 days
+    expect(list.length).toBeLessThanOrEqual(60)
+    expect(new Set(list.map((r: any) => r.id)).size).toBe(list.length)
+    list.forEach((r: any) => { expect(Number.isInteger(r.id)).toBe(true); expect(r.id).toBeGreaterThan(1); expect(r.id).toBeLessThan(2 ** 31) })
+    expect(list[0].at).toBeGreaterThan(Date.now())
+    for (let i = 1; i < list.length; i++) expect(list[i].at).toBeGreaterThanOrEqual(list[i - 1].at)
+    const capped = fakeNotifier({ max: 5 })
+    await boot({ ...withWird, prayer: manual }, { notifier: capped })
+    await tick(); await tick()
+    expect(capped.calls.at(-1)).toHaveLength(5)
+  })
+  it("the same reminder keeps the same id across reschedules, so the phone replaces rather than duplicates", async () => {
+    const n = fakeNotifier()
+    await boot({ ...withWird, prayer: manual }, { notifier: n })
+    await tick(); await tick()
+    await click('[data-ppages="4"]'); await tick()
+    const before = n.calls.at(-2).map((r: any) => r.id), after = n.calls.at(-1).map((r: any) => r.id)
+    expect(after).toEqual(before)
+    expect(n.calls.at(-1)[0].title).toMatch(/^Read 4 pages/)
+  })
+  it("clears everything when permission is off, and when every prayer is turned off", async () => {
+    const denied = fakeNotifier({ status: vi.fn(async () => "denied") })
+    await boot({ ...withWird, prayer: manual }, { notifier: denied })
+    await tick(); await tick()
+    expect(denied.calls.at(-1)).toEqual([])
+    const n = fakeNotifier()
+    await boot({ ...withWird, prayer: { ...manual, prayers: ["dhuhr"] } }, { notifier: n })
+    await tick(); await tick()
+    await click('[data-pray="dhuhr"]'); await tick()
+    expect(n.calls.at(-1)).toEqual([])
+  })
+  it("with a reliable notifier, hides the calendar-file button and says reminders arrive when closed", async () => {
+    await boot({ ...withWird, prayer: manual }, { notifier: fakeNotifier(), native: true })
+    await tick(); await tick()
+    expect($("#pcal")).toBeNull()
+    expect($("#fold-prayer").textContent).toMatch(/arrive even when Wird is closed/)
+  })
+  it("offers the exact-alarm setting on Android only when it is off", async () => {
+    const exact = { status: vi.fn(async () => "denied"), open: vi.fn(async () => { exact.status = vi.fn(async () => "granted") }) }
+    await boot({ ...withWird, prayer: manual }, { notifier: fakeNotifier({ exact }), native: true })
+    await tick(); await tick()
+    expect($("#pexact")).toBeTruthy()
+    await click("#pexact"); await tick(); await tick()
+    expect(exact.open).toHaveBeenCalled()
+    expect($("#pexact")).toBeNull()
+  })
+  it("asking for permission goes through the notifier", async () => {
+    const n = fakeNotifier({ status: vi.fn(async () => "default") })
+    await boot({ ...withWird, prayer: manual }, { notifier: n })
+    await tick(); await tick()
+    n.status = vi.fn(async () => "granted")
+    await click("#pnotif"); await tick(); await tick()
+    expect(n.request).toHaveBeenCalled()
+    expect($("#ptest")).toBeTruthy()
+  })
+  it("shares through the app's share sheet when there is one", async () => {
+    const share = vi.fn(async () => true)
+    await boot(withWird, { share })
+    location.hash = "#w/w1"; await tick()
+    await click("#share")
+    expect(share).toHaveBeenCalledWith(expect.stringContaining("Hifz cycle: page 143"))
+  })
+  it("tells the app shell when the theme is dark, so the status bar can match", async () => {
+    const onTheme = vi.fn()
+    await boot({ ...withWird, theme: { pal: "dusk", mode: "dark" } }, { onTheme })
+    expect(onTheme).toHaveBeenLastCalledWith(true)
   })
 })

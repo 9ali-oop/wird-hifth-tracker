@@ -5,9 +5,10 @@ import {
 } from "./core";
 import { DEFAULT_THEME, PAL, themeCss } from "./themes";
 import {
-  MAX_OFFSET, MAX_REMINDER_PAGES, PRAYERS, PRAYER_LABEL, cleanPrayer, fmtTime, nextUp, parseIcs, planReminders, reminderText,
+  MAX_OFFSET, MAX_REMINDER_PAGES, PRAYERS, PRAYER_LABEL, cleanPrayer, fmtTime, nextUp, parseIcs, planReminders,
   remindersToIcs, timetableFromEvents,
 } from "./prayer";
+import { webNotifier } from "./notify-web";
 
 export { mergeStates, stableKey, PAL };
 
@@ -71,32 +72,35 @@ export function createWirdApp(root, opts = {}) {
     state.prayer = cleanPrayer(Object.assign({}, state.prayer, patch, { updatedAt: Date.now() }));
     save(); scheduleNotifications();
   }
-  const notifState = () => (typeof Notification === "undefined" ? "unsupported" : Notification.permission);
-  let notifTimers = [];
-  function clearNotifTimers() { notifTimers.forEach(clearTimeout); notifTimers = []; }
-  async function notify(r) {
-    const w = reminderWird(), body = reminderText(r, state.prayer) + (w ? ". " + w.name + ", page " + w.page : "");
-    const opts2_ = { body, tag: "wird-" + r.day + "-" + r.prayer, icon: "/icon-192.png", badge: "/icon-192.png", data: { url: "/" } };
-    try {
-      const reg = navigator.serviceWorker && (await navigator.serviceWorker.getRegistration());
-      if (reg && reg.showNotification) { await reg.showNotification("Wird", opts2_); return true; }
-    } catch (e) {}
-    try { new Notification("Wird", opts2_); return true; } catch (e) { return false; }
+  // Notifications go through a notifier: browser timers on the web, the phone's own scheduler in the app.
+  const notifier = opts.notifier || webNotifier();
+  let notif = notifier.current ? notifier.current() : "unknown";
+  let exact = "granted";
+  const prayerWord = p => PRAYER_LABEL[p];
+  function reminderId(r) { const [y, m, d] = r.day.split("-").map(Number); return ((y % 100) * 10000 + m * 100 + d) * 10 + PRAYERS.indexOf(r.prayer) + 1; }
+  function reminderMessage(r) {
+    const P = state.prayer, w = reminderWird(), when = P.offset === 0 ? "at " : (P.dir === -1 ? "before " : "after ");
+    return { title: "Read " + r.pages + (r.pages === 1 ? " page " : " pages ") + when + prayerWord(r.prayer), body: prayerWord(r.prayer) + " jamat " + fmtTime(r.jamat) + (P.offset ? " · " + P.offset + " min " + (P.dir === -1 ? "before" : "after") : "") + (w ? " · " + w.name : "") };
   }
-  // Timers only live while the app is running, so this tops up the next 24 hours whenever the app is opened or refocused.
+  // Hands the notifier every reminder in its window. Skipped until the permission state is known, so a slow
+  // permission check at start-up can never wipe reminders the phone already holds.
   function scheduleNotifications() {
-    clearNotifTimers();
-    if (notifState() !== "granted") return;
+    if (notif === "unknown") return;
     const now = Date.now();
-    planReminders(state.prayer, now, now + 24 * 3600000).forEach(r => {
-      const ms = r.at - now;
-      if (ms > 0 && ms < 2147483647) notifTimers.push(setTimeout(() => notify(r), ms));
-    });
+    const list = notif !== "granted" ? [] : planReminders(state.prayer, now, now + notifier.horizonMs).slice(0, notifier.max).map(r => Object.assign({ id: reminderId(r), at: r.at }, reminderMessage(r)));
+    Promise.resolve(notifier.sync(list)).catch(() => {});
+  }
+  async function refreshNotif() {
+    let changed = false;
+    try { const s2 = await notifier.status(); if (s2 !== notif) { notif = s2; changed = true; } } catch (e) {}
+    if (notifier.exact) { try { const e2 = await notifier.exact.status(); if (e2 !== exact) { exact = e2; changed = true; } } catch (e) {} }
+    scheduleNotifications();
+    if (changed && current === "home") { const y = window.scrollY; home(); window.scrollTo(0, y); }
   }
   let calBusy = false;
   async function syncCalendar(manual) {
     const url = getIcal();
-    if (!url || !opts.fetchCalendar || calBusy) { if (manual && !opts.fetchCalendar) msg("pstat", "Sign in to read a calendar link.", 0); return false; }
+    if (!url || !opts.fetchCalendar || calBusy) { if (manual && !url) msg("pstat", "Paste a calendar link first.", 0); return false; }
     calBusy = true;
     if (manual) msg("pstat", "Reading the calendar…", 1);
     try {
@@ -122,10 +126,9 @@ export function createWirdApp(root, opts = {}) {
     const timing = P.offset === 0 ? "at jamat" : P.offset + " min " + (P.dir === -1 ? "before" : "after");
     return '<div class="nextup' + (n.due ? " due" : "") + '"><div><strong>' + PRAYER_LABEL[n.prayer] + " jamat " + fmtTime(n.jamat) + "</strong><span>" +
       (n.due ? "Time to read " : "Read ") + n.pages + (n.pages === 1 ? " page" : " pages") + " · " + timing + (w ? " · " + esc(w.name) + ", p. " + w.page : "") + "</span></div><b>" + (n.due ? inText(mins(n.jamat - Date.now())).replace("in ", "") + " left" : inText(mins(left))) + "</b></div>";
-      (n.due ? "Time to read: " : "") + esc(reminderText(n, P)) + (w ? " · " + esc(w.name) + ", page " + w.page : "") + "</span></div><b>" + (n.due ? inText(mins(n.jamat - Date.now())).replace("in ", "") + " left" : inText(mins(left))) + "</b></div>";
   }
   function prayerFold() {
-    const P = state.prayer, ns = notifState(), cal = P.mode === "calendar";
+    const P = state.prayer, ns = notif, cal = P.mode === "calendar";
     let h = '<details class="fold" id="fold-prayer"><summary>Prayer reminders' + (P.prayers.length ? ' <span class="badge">On</span>' : "") + '</summary><p class="muted small">A nudge to read a few pages before (or after) the congregation prayer, at whatever timing suits you.</p>';
     h += '<p class="lbl">Remind me for</p><div class="chips">' + PRAYERS.map(p => '<button class="chip' + (P.prayers.includes(p) ? " on" : "") + '" data-pray="' + p + '" aria-pressed="' + P.prayers.includes(p) + '">' + PRAYER_LABEL[p] + "</button>").join("") + "</div>";
     h += '<p class="lbl">When</p><div class="seg"><button class="chip' + (P.dir === -1 ? " on" : "") + '" data-pdir="-1" aria-pressed="' + (P.dir === -1) + '">Before jamat</button><button class="chip' + (P.dir === 1 ? " on" : "") + '" data-pdir="1" aria-pressed="' + (P.dir === 1) + '">After jamat</button></div>';
@@ -133,19 +136,26 @@ export function createWirdApp(root, opts = {}) {
     h += '<p class="lbl">Pages each time</p><div class="chips">' + [2, 3, 4, 5, 10].map(n => '<button class="chip' + (P.pages === n ? " on" : "") + '" data-ppages="' + n + '">' + n + "</button>").join("") + '</div><div class="row"><input type="number" id="ppages" inputmode="numeric" min="1" max="' + MAX_REMINDER_PAGES + '" value="' + P.pages + '" aria-label="Pages each time"><span class="muted small">pages, or type your own</span></div>';
     if (state.wirds.length > 1) h += '<label class="lbl" for="pwird">For which wird</label><select id="pwird">' + state.wirds.map(w => '<option value="' + esc(w.id) + '"' + ((P.wird || state.wirds[0].id) === w.id ? " selected" : "") + ">" + esc(w.name) + "</option>").join("") + "</select>";
     h += '<p class="lbl">Jamat times</p><div class="seg"><button class="chip' + (cal ? " on" : "") + '" data-pmode="calendar" aria-pressed="' + cal + '">From a calendar</button><button class="chip' + (!cal ? " on" : "") + '" data-pmode="manual" aria-pressed="' + !cal + '">Type them in</button></div>';
-    if (cal) {
+    if (cal && !opts.fetchCalendar) {
+      h += '<p class="hint">Reading a calendar link works in the Wird Android app, where the phone fetches it directly. In a browser, type the times in instead.</p>';
+    } else if (cal) {
       h += '<label class="lbl" for="ical" style="margin-top:12px">Calendar link</label><input type="url" id="ical" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://calendar.google.com/…/basic.ics" value="' + esc(getIcal()) + '">' +
         '<div class="row"><button class="btn" id="isync">Read times now</button></div><p class="msg" id="pstat" role="status">' + (P.syncedAt ? "Last read " + new Date(P.syncedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + ", " + Object.keys(P.days).length + " days." : "") + "</p>" +
-        '<p class="hint">Use a calendar whose events are named Fajr, Dhuhr, Asr, Maghrib and Isha, and end at the iqamah. In Google Calendar: Settings, pick the calendar, then "Secret address in iCal format". The link stays on this device. Needs you to be signed in.</p>';
+        '<p class="hint">Use a calendar whose events are named Fajr, Dhuhr, Asr, Maghrib and Isha, and end at the iqamah. In Google Calendar: Settings, pick the calendar, then "Secret address in iCal format". The link stays on this phone. Times refresh by themselves every few hours while Wird is open.</p>';
     } else {
       h += '<div class="times">' + PRAYERS.map(p => '<label for="pm-' + p + '">' + PRAYER_LABEL[p] + '</label><input type="time" id="pm-' + p + '" value="' + esc(P.manual[p] || "") + '">').join("") + '</div><p class="hint">Times that do not change from day to day. Leave a prayer empty to skip it.</p>';
     }
     h += '<p class="lbl">Get the reminders</p><div class="row wrapbtn">';
     if (ns === "granted") h += '<button class="btn" id="ptest">Send a test</button><span class="okmark">Notifications on</span>';
-    else if (ns === "default") h += '<button class="btn" id="pnotif">Turn on notifications</button>';
-    else h += '<span class="muted small">' + (ns === "denied" ? "Notifications are blocked for this site in your browser settings." : "This browser cannot show notifications.") + "</span>";
-    h += '<button class="btn" id="pcal">Add next 14 days to my calendar</button></div><p class="msg" id="pmsg" role="status"></p>' +
-      '<p class="hint">Notifications only arrive while Wird is open or running in the background, which some phones limit. For alerts that always arrive, add the reminders to your calendar: they are ordinary events with an alert, so your phone handles the rest. Add again every couple of weeks to refresh the times.</p></details>';
+    else if (ns === "default" || ns === "unknown") h += '<button class="btn" id="pnotif">Turn on notifications</button>';
+    else h += '<span class="muted small">' + (ns === "denied" ? (opts.native ? "Notifications are turned off for Wird in your phone settings." : "Notifications are blocked for this site in your browser settings.") : "This browser cannot show notifications.") + "</span>";
+    if (!notifier.reliable) h += '<button class="btn" id="pcal">Add next 14 days to my calendar</button>';
+    h += '</div>';
+    if (notifier.exact && ns === "granted" && exact !== "granted") h += '<div class="row wrapbtn"><button class="btn" id="pexact">Allow on-time reminders</button><span class="muted small">Without this, Android may deliver them a few minutes late.</span></div>';
+    h += '<p class="msg" id="pmsg" role="status"></p>';
+    h += notifier.reliable
+      ? '<p class="hint">Reminders are scheduled on your phone for the next two weeks and arrive even when Wird is closed. Opening Wird now and then tops them up.</p></details>'
+      : '<p class="hint">Notifications only arrive while Wird is open or running in the background, which some phones limit. For alerts that always arrive, add the reminders to your calendar: they are ordinary events with an alert, so your phone handles the rest. Add again every couple of weeks to refresh the times.</p></details>';
     return h;
   }
   function bindPrayer() {
@@ -162,10 +172,11 @@ export function createWirdApp(root, opts = {}) {
     PRAYERS.forEach(p => { if ($("pm-" + p)) $("pm-" + p).onchange = () => { const m = Object.assign({}, P().manual); if ($("pm-" + p).value) m[p] = $("pm-" + p).value; else delete m[p]; setPrayer({ manual: m }); open(); }; });
     if ($("ical")) $("ical").onchange = () => { setIcal($("ical").value.trim()); };
     if ($("isync")) $("isync").onclick = () => { setIcal($("ical").value.trim()); syncCalendar(true); };
-    if ($("pnotif")) $("pnotif").onclick = async () => { try { await Notification.requestPermission(); } catch (e) {} scheduleNotifications(); open(); };
+    if ($("pnotif")) $("pnotif").onclick = async () => { try { notif = await notifier.request(); } catch (e) {} await refreshNotif(); open(); };
+    if ($("pexact")) $("pexact").onclick = async () => { await notifier.exact.open(); await refreshNotif(); open(); };
     if ($("ptest")) $("ptest").onclick = async () => {
-      const w = reminderWird(), r = { prayer: P().prayers[0] || "dhuhr", jamat: Date.now() + 30 * 60000, pages: P().pages, day: "test" };
-      const ok = await notify(r); msg("pmsg", ok ? "Sent. It should appear now." : "Could not show a notification. Check your browser settings.", ok ? 1 : 0);
+      const r = { prayer: P().prayers[0] || "dhuhr", jamat: Date.now() + 30 * 60000, pages: P().pages, day: "test" }, m = reminderMessage(r);
+      const ok = await notifier.test(m.title, m.body); msg("pmsg", ok ? "Sent. It should appear in a moment." : "Could not show a notification. Check your settings.", ok ? 1 : 0);
     };
     if ($("pcal")) $("pcal").onclick = () => {
       const now = Date.now(), list = planReminders(P(), now, now + 14 * 86400000);
@@ -191,6 +202,7 @@ export function createWirdApp(root, opts = {}) {
     let tc = document.querySelector('meta[name="theme-color"]');
     if (!tc) { tc = document.createElement("meta"); tc.setAttribute("name", "theme-color"); document.head.appendChild(tc); }
     tc.setAttribute("content", t.bg);
+    if (opts.onTheme) opts.onTheme(t.dark);
   }
   if (mq) (mq.addEventListener ? mq.addEventListener("change", applyTheme) : mq.addListener(applyTheme));
 
@@ -294,7 +306,7 @@ export function createWirdApp(root, opts = {}) {
       Object.keys(PAL).map(k => { const c = PAL[k].light, d = PAL[k].dark; return '<button class="sw' + (t.pal === k ? " on" : "") + '" data-pal="' + k + '" aria-pressed="' + (t.pal === k) + '"><span><i style="background:' + c[0] + '"></i><i style="background:' + c[6] + '"></i><i style="background:' + c[5] + '"></i><i style="background:' + d[0] + '"></i></span>' + PAL[k].name + "</button>"; }).join("") +
       '</div><div class="seg" style="margin-top:12px">' + [["auto", "Match phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => '<button class="chip' + (t.mode === k ? " on" : "") + '" data-mode="' + k + '" aria-pressed="' + (t.mode === k) + '">' + l + "</button>").join("") + "</div></details>";
     h += prayerFold();
-    h += '<details class="fold" id="fold-backup"><summary>Backup code</summary><p class="muted small">Copy this to keep a backup, or paste one to restore. Signing in with Google keeps everything synced automatically instead.</p>' +
+    h += '<details class="fold" id="fold-backup"><summary>Backup code</summary><p class="muted small">Copy this to keep a backup, or paste one to restore. It is also how you move your wirds to another phone or to the app.</p>' +
       '<div class="row"><button class="btn" id="exp">Show code</button><button class="btn" id="copy" hidden>Copy</button></div>' +
       '<textarea id="bk" spellcheck="false" aria-label="Backup code"></textarea>' +
       '<div class="row"><button class="btn" id="imp">Restore from code</button></div><p class="msg" id="bmsg" role="status"></p></details>' +
@@ -476,7 +488,8 @@ export function createWirdApp(root, opts = {}) {
     root.querySelectorAll("[data-jz]").forEach(b => b.onclick = () => { const p = +b.dataset.jz; if (!p || p === w.page) return; const before = snap(); setPage(w, p); detail(w); toast("Moved your place to page " + p, () => restore(before)); });
     $("share").onclick = async () => {
       const text = shareText(w);
-      try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+      if (opts.share) { if (await opts.share(text)) return; }
+      else { try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e && e.name === "AbortError") return; } }
       try { await navigator.clipboard.writeText(text); msg("pmsg", "Copied: " + text, 1); } catch (e) { msg("pmsg", text, 1); }
     };
     $("pg").onchange = () => {
@@ -515,7 +528,7 @@ export function createWirdApp(root, opts = {}) {
     const w = find(current.slice(7)); if (!w) return;
     if (e.key === "ArrowRight") { step(w, 1); detail(w); } else if (e.key === "ArrowLeft") { step(w, -1); detail(w); }
   };
-  const onVis = () => { if (!document.hidden) { scheduleNotifications(); if (staleCalendar()) syncCalendar(false); if (current !== "form") rerenderInPlace(); } };
+  const onVis = () => { if (!document.hidden) { refreshNotif(); if (staleCalendar()) syncCalendar(false); if (current !== "form") rerenderInPlace(); } };
   function rerenderInPlace() {
     const y = window.scrollY;
     if (current === "home") home(); else if (current.startsWith("detail:")) { const w = find(current.slice(7)); if (w) detail(w); else go(""); }
@@ -527,12 +540,13 @@ export function createWirdApp(root, opts = {}) {
   applyTheme();
   route();
   scheduleNotifications();
+  refreshNotif();
   if (staleCalendar()) setTimeout(() => syncCalendar(false), 800);
   // Keep the "next up" line fresh, top up notification timers, and refresh stale calendar data.
   const ticker = setInterval(() => {
     if (current === "home") { const el = root.querySelector(".nextup"); if (el || state.prayer.prayers.length) { const html = nextUpHtml(); if (el && html) el.outerHTML = html; } }
   }, 30000);
-  const topUp = setInterval(() => { scheduleNotifications(); if (staleCalendar()) syncCalendar(false); }, 30 * 60000);
+  const topUp = setInterval(() => { refreshNotif(); if (staleCalendar()) syncCalendar(false); }, 30 * 60000);
 
   return {
     getState: () => state,
@@ -546,6 +560,6 @@ export function createWirdApp(root, opts = {}) {
       return state;
     },
     refreshHome() { if (current === "home") { const y = window.scrollY; home(); window.scrollTo(0, y); } },
-    destroy() { clearInterval(ticker); clearInterval(topUp); clearNotifTimers(); window.removeEventListener("hashchange", route); window.removeEventListener("keydown", onKey); document.removeEventListener("visibilitychange", onVis); }
+    destroy() { clearInterval(ticker); clearInterval(topUp); if (!notifier.reliable) Promise.resolve(notifier.sync([])).catch(() => {}); window.removeEventListener("hashchange", route); window.removeEventListener("keydown", onKey); document.removeEventListener("visibilitychange", onVis); }
   };
 }

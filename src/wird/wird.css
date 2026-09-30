@@ -1,5 +1,5 @@
 /* Wird app styles. Colours come from the palette variables set at runtime. */
-html, body { background: var(--bg); color: var(--ink); }
+html, body { margin: 0; background: var(--bg); color: var(--ink); overflow-x: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 .wird-app { position: relative; isolation: isolate; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 16px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
 .wird-app::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: var(--motif, none); background-size: var(--motif-size, 56px); opacity: var(--motif-alpha, 0.12); -webkit-mask-image: linear-gradient(#000 0, transparent 46%); mask-image: linear-gradient(#000 0, transparent 46%); }
 .wird-app *, .wird-app *::before, .wird-app *::after { box-sizing: border-box; }
