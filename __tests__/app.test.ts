@@ -598,3 +598,13 @@ describe("group khatmah", () => {
     open.mockRestore()
   })
 })
+
+describe("falling behind on a personal wird", () => {
+  it("Today says how far behind you are, and stays quiet when you're on pace", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(2026, 8, 30, 12, 0))
+    await boot({ wirds: [{ id: "b1", name: "B", type: "khatmah", ranges: "1-604", target: 20, page: 50, log: { "2026-9-29": 20 }, updatedAt: 1, createdAt: 1 }] })
+    expect($(".hbehind").textContent).toMatch(/About 6 days behind/)
+    await boot({ wirds: [{ id: "b2", name: "B", type: "khatmah", ranges: "1-604", target: 5, page: 50, log: Object.fromEntries([24, 25, 26, 27, 28, 29, 30].map((d) => ["2026-9-" + d, 5])), updatedAt: 1, createdAt: 1 }] })
+    expect($(".hbehind")).toBeNull()
+  })
+})

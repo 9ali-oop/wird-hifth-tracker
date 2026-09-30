@@ -325,8 +325,9 @@ export function createWirdApp(root, opts = {}) {
     h += switcher(w);
     h += '<section class="hero' + (met ? " met" : "") + '"><div class="hero-top"><span class="hname">' + esc(w.name) + '</span><span class="hpill">' + esc(w.round) + " " + w.cycle + "</span></div>" +
       '<div class="hring">' + ring(196, goal ? tn / goal : i / list.length, "hero-ring") + '<div class="hnum"><strong>' + (goal ? tn : w.page) + "</strong><span>" + (goal ? "of " + goal + " pages today" : "page") + "</span>" + (met ? '<em class="done-badge">' + ICON.check + "Done</em>" : "") + "</div></div>" +
-      (sit >= 0 ? '<div class="dots" aria-label="' + sit + " of " + w.parts + ' sittings done">' + Array.from({ length: w.parts }, (_, k) => '<i class="' + (k < sit ? "on" : "") + '"></i>').join("") + "</div>" : "") +
+      (sit >= 0 ? '<div class="dots" role="img" aria-label="' + sit + " of " + w.parts + ' sittings done">' + Array.from({ length: w.parts }, (_, k) => '<i class="' + (k < sit ? "on" : "") + '"></i>').join("") + "</div>" : "") +
       '<p class="hpos"><b>Page ' + w.page + "</b> · Juz " + juzOf(w.page) + '</p><p class="hsub">' + esc(posText(w)) + "</p>" +
+      (goal && paceDays(w) <= -1 ? '<p class="hbehind">About ' + plural(-paceDays(w), "day", "days") + " behind this week. A few extra pages a day will close it.</p>" : "") +
       '<div class="hquick" role="group" aria-label="Log pages read">' + [1, 2, 5, 10].map(n => '<button class="qb" data-q="' + n + '" aria-label="Log ' + plural(n, "page", "pages") + '">+' + n + "</button>").join("") + "</div>" +
       '<button class="cta" data-open="' + esc(w.id) + '">Open page ' + w.page + "</button></section>";
     h += nextUpHtml();
@@ -660,14 +661,14 @@ export function createWirdApp(root, opts = {}) {
       '<div class="quick">' + [2, 5, 10, 20].map(n => '<button class="chip" data-q="' + n + '">+' + n + "</button>").join("") + "</div>";
     if (parts) {
       const per = goal / parts, need = Math.max(1, Math.ceil(per * (done + 1) - tn - 1e-9));
-      h += '<section class="sit"><div class="dots big" aria-label="' + done + " of " + parts + ' sittings done">' + Array.from({ length: parts }, (_, k) => '<i class="' + (k < done ? "on" : "") + '"><b>' + (k + 1) + "</b></i>").join("") + "</div>" +
+      h += '<section class="sit"><div class="dots big" role="img" aria-label="' + done + " of " + parts + ' sittings done">' + Array.from({ length: parts }, (_, k) => '<i class="' + (k < done ? "on" : "") + '"><b>' + (k + 1) + "</b></i>").join("") + "</div>" +
         '<p class="hint center">' + (done >= parts ? "Every sitting done today. Alhamdulillah." : "Sitting " + (done + 1) + " of " + parts + ": " + plural(need, "more page", "more pages")) + "</p></section>";
     }
     h += '<div class="actions"><button class="act flag' + (weakHere ? " on" : "") + '" id="weak" aria-label="Mark this page as weak" aria-pressed="' + weakHere + '">' + ICON.flag + "<span>" + (weakHere ? "Weak" : "Mark weak") + '</span></button><a class="act" href="https://quran.com/page/' + w.page + '" target="_blank" rel="noopener">' + ICON.ext + '<span>Open page</span></a><button class="act" id="share">' + ICON.share + "<span>Share</span></button></div>";
     h += '<details class="card fold" id="stop"' + (w.ayah ? "" : "") + '><summary><h2>Where did you stop?</h2><span class="muted small">' + (w.ayah ? esc(nm(w.ayah[0]) + " " + w.ayah[1]) : "Optional") + "</span></summary>";
     ayatOnPage(w.page).forEach(g => {
       h += '<div class="group"><p>' + esc(nm(g.s)) + '</p><div class="chips">';
-      for (let a = g.from; a <= g.to; a++) { const on = w.ayah && w.ayah[0] === g.s && w.ayah[1] === a; h += '<button class="chip ay' + (on ? " on" : "") + '" data-s="' + g.s + '" data-a="' + a + '" aria-pressed="' + on + '">' + a + "</button>"; }
+      for (let a = g.from; a <= g.to; a++) { const on = !!(w.ayah && w.ayah[0] === g.s && w.ayah[1] === a); h += '<button class="chip ay' + (on ? " on" : "") + '" data-s="' + g.s + '" data-a="' + a + '" aria-pressed="' + on + '">' + a + "</button>"; }
       h += "</div></div>";
     });
     h += '<p class="hint">Tap again to clear.</p></details>' +

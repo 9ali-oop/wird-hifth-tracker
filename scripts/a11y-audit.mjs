@@ -1,39 +1,43 @@
-// Accessibility audit: renders home, wird and edit screens in every theme (light and dark) in a real Chromium
-// and runs axe-core on each. Start the built app first (npm run build && PORT=4173 node .output/server/index.mjs).
-// Usage: node scripts/a11y-audit.mjs   (env: BASE=http://127.0.0.1:4173  CHROMIUM=/path/to/chromium)
+// Accessibility and layout audit: renders every screen in every theme (light and dark) in a real Chromium,
+// runs axe-core, and checks nothing overflows sideways on a small (320px) and a normal (390px) phone.
+// Start the built app first (npm run build && npx vite preview --port 4173), then: npm run audit:a11y
+// Env: BASE=http://127.0.0.1:4173  CHROMIUM=/path/to/chromium
 import { chromium } from "playwright-core"
 import fs from "fs"
-const BASE = process.env.BASE || "http://127.0.0.1:4173"
+const BASE = (process.env.BASE || "http://127.0.0.1:4173").replace(/\/$/, "") + "/"
 const CHROMIUM = process.env.CHROMIUM || "/opt/pw-browsers/chromium"
 const axeSrc = fs.readFileSync("node_modules/axe-core/axe.min.js", "utf8")
 const dk = (n) => { const d = new Date(Date.now() - 3 * 3600000); d.setDate(d.getDate() - n); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate() }
 const now = Date.now()
-const mk = (theme) => ({ v: 5, deleted: {}, updatedAt: now, theme, prayer: { mode: "manual", manual: { dhuhr: "13:45", asr: "16:15" }, prayers: ["dhuhr", "asr"], offset: 30, dir: -1, pages: 3, wird: "hifz1", updatedAt: now, days: {}, syncedAt: 0 }, wirds: [
-  { id: "hifz1", name: "Hifz cycle", type: "hifz", round: "Cycle", ranges: "1-248, 562-604", sel: { by: "surah", items: [1, 2, 3, 4, 5, 6, 7, 8, 67] }, dir: 1, target: 40, parts: 4, page: 143, ayah: [6, 119], cycle: 7, log: { [dk(0)]: 27, [dk(1)]: 40 }, weak: [12, 143], createdAt: now, updatedAt: now },
-  { id: "kh1", name: "Khatmah", type: "khatmah", round: "Khatmah", ranges: "1-604", dir: 1, target: 20, parts: 0, page: 320, ayah: null, cycle: 2, log: { [dk(0)]: 20 }, weak: [], createdAt: now, updatedAt: now } ] })
+const seed = (theme) => ({ v: 5, deleted: {}, updatedAt: now, theme,
+  prayer: { mode: "manual", manual: { dhuhr: "13:45", asr: "16:15" }, prayers: ["dhuhr", "asr"], offset: 30, dir: -1, pages: 3, updatedAt: now, days: {}, syncedAt: 0 },
+  wirds: [
+    { id: "hifz1", name: "Hifz revision", type: "hifz", ranges: "22-121, 222-301", sel: { juz: [2, 3, 4, 5, 6, 12, 13, 14, 15], surah: [], pages: "" }, target: 40, parts: 4, page: 43, ayah: [2, 260], cycle: 7, log: { [dk(0)]: 27, [dk(1)]: 40 }, weak: [43], createdAt: 1, updatedAt: now },
+    { id: "grp1", name: "Group khatmah", type: "group", ranges: "1-604", target: 10, page: 142, cycle: 11, groupAt: 182, groupCycle: 11, log: {}, createdAt: 2, updatedAt: now },
+  ] })
+const screens = [
+  ["today", "", ".hero"], ["read", "#w/hifz1", "#next"], ["progress", "#progress", ".stats"], ["settings", "#settings", ".swatches"],
+  ["edit-juz", "#w/hifz1/edit", "#jgrid"], ["new-group", "#new/group", "#fk"], ["group", "#w/grp1", "#next"],
+]
 const browser = await chromium.launch({ executablePath: CHROMIUM, args: ["--no-sandbox"] })
 let total = 0
-for (const pal of ["sage", "ocean", "rose", "sand", "plum", "dusk", "ember", "mono"]) for (const mode of ["light", "dark"]) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, colorScheme: mode })
+for (const pal of ["sage", "ocean", "rose", "sand", "plum", "dusk", "ember", "mono"]) for (const mode of ["light", "dark"]) for (const width of [320, 390]) {
+  if (width === 320 && pal !== "sage") continue
+  const ctx = await browser.newContext({ viewport: { width, height: 800 }, colorScheme: mode, hasTouch: true })
   const page = await ctx.newPage()
-  await page.addInitScript((s) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("wird-bookmarks-v3", JSON.stringify(s)); sessionStorage.setItem("seeded", "1") } }, mk({ pal, mode }))
-  await page.goto(BASE + "/"); await page.waitForSelector(".wcard")
-  const screens = [["home", null], ["detail", '[data-open="hifz1"]'], ["form", "#edit"]]
-  for (const [name, sel] of screens) {
-    if (name === "detail") { await page.click(sel); await page.waitForSelector("#next") }
-    if (name === "form") { await page.click(sel); await page.waitForSelector("#fsave") }
-    await page.evaluate(() => document.querySelectorAll(".wird-app details").forEach(d => (d.open = true)))
+  await page.addInitScript((s) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("wird-bookmarks-v3", JSON.stringify(s)); localStorage.setItem("wird-focus", "hifz1"); sessionStorage.setItem("seeded", "1") } }, seed({ pal, mode }))
+  for (const [name, hash, ready] of [...screens, ["today-group", "", ".hero"]]) {
+    if (name === "today-group") await page.evaluate(() => localStorage.setItem("wird-focus", "grp1"))
+    await page.goto(BASE + (hash || "#")); await page.reload(); await page.waitForSelector(ready)
+    await page.evaluate(() => document.querySelectorAll(".wird-app details").forEach((d) => (d.open = true)))
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    if (over > 0) { total++; console.log(`[${pal}-${mode}@${width}/${name}] sideways overflow ${over}px`) }
     await page.evaluate(axeSrc)
-    const res = await page.evaluate(async () => await axe.run(document.querySelector(".wird-app"), { rules: { "region": { enabled: false } } }))
-    for (const v of res.violations) { total++; console.log(`[${pal}-${mode}/${name}] ${v.id} (${v.impact}): ${v.help} -> ${v.nodes.slice(0, 2).map(n => n.target.join(" ")).join(" | ")}`) }
-    if (pal === "sage" && mode === "light") {
-      const small = await page.evaluate(() => [...document.querySelectorAll(".wird-app button, .wird-app a, .wird-app input:not([type=hidden]), .wird-app select, .wird-app summary")].map(e => { const r = e.getBoundingClientRect(); return { t: (e.id || e.className || e.tagName) + ":" + (e.textContent || "").trim().slice(0, 14), w: Math.round(r.width), h: Math.round(r.height) } }).filter(x => (x.w < 32 || x.h < 32) && x.w > 0))
-      if (small.length) console.log(`small tap targets on ${name}:`, JSON.stringify(small.slice(0, 12)))
-    }
-    if (name === "form") { await page.goto(BASE + "/#"); await page.waitForSelector(".wcard") }
+    const res = await page.evaluate(async () => await axe.run(document.querySelector(".wird-app"), { rules: { region: { enabled: false } } }))
+    for (const v of res.violations) { total++; console.log(`[${pal}-${mode}@${width}/${name}] ${v.id} (${v.impact}): ${v.help} -> ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ")}`) }
   }
   await ctx.close()
 }
-console.log("violations total:", total)
+console.log("problems total:", total)
 await browser.close()
 process.exit(total ? 1 : 0)
