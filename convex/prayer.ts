@@ -1,7 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server"
 import { v } from "convex/values"
 import { action } from "./_generated/server"
-import { filterIcsWindow, normalizeCalendarUrl } from "../src/wird/prayer"
+import { filterIcsWindow, normalizeCalendarUrl } from "./lib/calendar"
 
 const MAX_BYTES = 5_000_000
 const HOST_OK = /^(calendar\.google\.com|outlook\.(office365|live)\.com|outlook\.office\.com|([a-z0-9-]+\.)*icloud\.com)$/i

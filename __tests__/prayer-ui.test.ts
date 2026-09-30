@@ -152,15 +152,15 @@ describe("next up strip", () => {
     await withTimes(at(12, 0))
     const t = $(".nextup").textContent!
     expect(t).toContain("Dhuhr jamat 13:45")
-    expect(t).toContain("Read 3 pages 30 min before Dhuhr jamat (13:45)")
-    expect(t).toContain("Hifz cycle, page 143")
+    expect(t).toContain("Read 3 pages · 30 min before")
+    expect(t).toContain("Hifz cycle, p. 143")
     expect(t).toContain("in 1 h 15 min")
     expect($(".nextup").className).not.toContain("due")
   })
   it("turns into a call to action once the reminder time has come", async () => {
     await withTimes(at(13, 30))
     expect($(".nextup").className).toContain("due")
-    expect($(".nextup").textContent).toContain("Time to read")
+    expect($(".nextup").textContent).toContain("Time to read 3 pages")
     expect($(".nextup b").textContent).toBe("15 min left")
   })
   it("moves on to the next prayer after jamat", async () => {
@@ -182,7 +182,7 @@ describe("next up strip", () => {
   })
   it("supports after-jamat timing", async () => {
     await withTimes(at(12, 0), { dir: 1, offset: 20 })
-    expect($(".nextup").textContent).toContain("Read 3 pages 20 min after Dhuhr jamat")
+    expect($(".nextup").textContent).toContain("Read 3 pages · 20 min after")
   })
 })
 

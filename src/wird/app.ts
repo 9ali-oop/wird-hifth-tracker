@@ -119,7 +119,9 @@ export function createWirdApp(root, opts = {}) {
     const n = nextUp(P, Date.now());
     if (!n) return '<div class="nextup idle"><span>Reminders are on, but there are no prayer times yet. Open Prayer reminders to add them.</span></div>';
     const w = reminderWird(), left = n.at - Date.now();
+    const timing = P.offset === 0 ? "at jamat" : P.offset + " min " + (P.dir === -1 ? "before" : "after");
     return '<div class="nextup' + (n.due ? " due" : "") + '"><div><strong>' + PRAYER_LABEL[n.prayer] + " jamat " + fmtTime(n.jamat) + "</strong><span>" +
+      (n.due ? "Time to read " : "Read ") + n.pages + (n.pages === 1 ? " page" : " pages") + " · " + timing + (w ? " · " + esc(w.name) + ", p. " + w.page : "") + "</span></div><b>" + (n.due ? inText(mins(n.jamat - Date.now())).replace("in ", "") + " left" : inText(mins(left))) + "</b></div>";
       (n.due ? "Time to read: " : "") + esc(reminderText(n, P)) + (w ? " · " + esc(w.name) + ", page " + w.page : "") + "</span></div><b>" + (n.due ? inText(mins(n.jamat - Date.now())).replace("in ", "") + " left" : inText(mins(left))) + "</b></div>";
   }
   function prayerFold() {

@@ -251,37 +251,5 @@ export function reminderText(r: { prayer: Prayer; jamat: number; pages: number }
   return "Read " + r.pages + (r.pages === 1 ? " page" : " pages") + " " + (s.offset === 0 ? "at " : s.offset + " min " + (s.dir === -1 ? "before " : "after ")) + label + " jamat (" + fmtTime(r.jamat) + ")";
 }
 
-// ---------- calendar link safety and trimming (used by the Convex action, tested here) ----------
-const CAL_HOSTS = [/^calendar\.google\.com$/i, /(^|\.)icloud\.com$/i, /^outlook\.(office365|live)\.com$/i, /^outlook\.office\.com$/i];
-
-/** Accepts only https (or webcal) links to Google, Apple or Outlook calendars. Returns the https URL, or null. */
-export function normalizeCalendarUrl(input: string): string | null {
-  let t = String(input || "").trim();
-  if (!t || t.length > 2000) return null;
-  t = t.replace(/^webcals?:\/\//i, "https://");
-  let u: URL;
-  try { u = new URL(t); } catch { return null; }
-  if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
-  if (!CAL_HOSTS.some((re) => re.test(u.hostname))) return null;
-  return u.toString();
-}
-
-/** Keeps the calendar header (time zone info included) and only the events starting inside [from, to] (epoch ms, day precision). */
-export function filterIcsWindow(text: string, from: number, to: number): string {
-  const lines = String(text || "").replace(/\r\n?/g, "\n").replace(/\n[ \t]/g, "").split("\n");
-  const lo = ymd(new Date(from - 2 * 86400000)), hi = ymd(new Date(to + 2 * 86400000));
-  const out: string[] = [];
-  let block: string[] | null = null, inRange = false;
-  for (const line of lines) {
-    if (line === "BEGIN:VEVENT") { block = [line]; inRange = false; continue; }
-    if (block) {
-      block.push(line);
-      if (line.startsWith("DTSTART")) { const m = line.match(/:(\d{8})/); const d = m ? Number(m[1]) : 0; inRange = d >= lo && d <= hi; }
-      if (line === "END:VEVENT") { if (inRange) out.push(...block); block = null; }
-      continue;
-    }
-    if (line) out.push(line);
-  }
-  return out.join("\r\n") + "\r\n";
-}
-const ymd = (d: Date) => d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+// Calendar link safety and trimming live in convex/lib so the backend action is self-contained.
+export { filterIcsWindow, normalizeCalendarUrl } from "../../convex/lib/calendar";
