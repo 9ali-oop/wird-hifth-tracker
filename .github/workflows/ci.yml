@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish the Android APK as a GitHub release"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
+        with:
+          path: dist
+
+  # Publishes the web version to GitHub Pages once Pages is switched on (Settings > Pages > Source: GitHub Actions).
+  pages:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Check that Pages is switched on
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" --jq .build_type 2>/dev/null | grep -q workflow; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Pages is not switched on yet. Settings > Pages > Source: GitHub Actions, then re-run."
+          fi
+      - id: deploy
+        if: steps.check.outputs.enabled == 'true'
+        uses: actions/deploy-pages@v4
+
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run android:sync
+      - name: Load the signing key (if the repository has it)
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wird-release.jks"
+            echo "file=$RUNNER_TEMP/wird-release.jks" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No signing key in the repository secrets, so this build is debug-signed (fine for testing, but it cannot update an installed release build)."
+          fi
+      - name: Build release APK
+        if: steps.signing.outputs.file != ''
+        working-directory: android
+        env:
+          WIRD_KEYSTORE_FILE: ${{ steps.signing.outputs.file }}
+          WIRD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          WIRD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          WIRD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon && cp app/build/outputs/apk/release/app-release.apk "../Wird-$(node -p 'require("../package.json").version').apk"
+      - name: Build debug APK
+        if: steps.signing.outputs.file == ''
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon && cp app/build/outputs/apk/debug/app-debug.apk "../Wird-$(node -p 'require("../package.json").version')-debug.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wird-android
+          path: Wird-*.apk
+      - name: Publish release
+        if: github.event_name == 'workflow_dispatch' && inputs.release && steps.signing.outputs.file != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p 'require("./package.json").version')
+          gh release create "v$V-${{ github.run_number }}" Wird-*.apk --target "${{ github.sha }}" --title "Wird $V (build ${{ github.run_number }})" \
+            --notes "Android app for testing. On your phone: download the .apk, open it, and allow installing from this source if asked."
