@@ -90,6 +90,6 @@ export function themeCss(themeIn: { pal?: string; mode?: string } | undefined, p
   const c = dark ? p.dark : p.light;
   const tile = motifTile(p.motif, c[5]);
   const css =
-    ":root{" + VARS.map((v, i) => v + ":" + c[i]).join(";") + ";--motif:" + tile.image + ";--motif-size:" + tile.size + "px;--motif-alpha:" + (dark ? 0.1 : 0.14) + ";color-scheme:" + (dark ? "dark" : "light") + "}";
+    ":root{" + VARS.map((v, i) => v + ":" + c[i]).join(";") + ";--motif:" + tile.image + ";--motif-size:" + tile.size + "px;--motif-alpha:" + (dark ? 0.07 : 0.1) + ";color-scheme:" + (dark ? "dark" : "light") + "}";
   return { css, bg: c[0], dark };
 }

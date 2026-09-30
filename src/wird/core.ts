@@ -127,7 +127,7 @@ const strict = (v: unknown, lo: number, hi: number) => {
 };
 const rid = () => Math.random().toString(36).slice(2, 10);
 
-export function cleanWird(raw: any): any | null {
+export function cleanWird(raw: any, fallbackCreated = 0): any | null {
   if (!raw || typeof raw !== "object") return null;
   const w: any = {};
   w.type = TYPE_ROUND[raw.type] ? raw.type : raw.round === "Cycle" ? "hifz" : raw.ranges === "1-604" ? "khatmah" : "custom";
@@ -161,8 +161,8 @@ export function cleanWird(raw: any): any | null {
     const items = [...new Set<number>(raw.sel.items.map((x: unknown) => strict(x, 1, max)).filter(Boolean))].sort((a, b) => a - b);
     if (items.length) w.sel = { by: raw.sel.by, items };
   }
-  const now = Date.now();
-  w.createdAt = int(raw.createdAt, 0, 8.64e15, now);
+  // A missing creation time must not be "now": cleaning has to give the same answer every time it runs.
+  w.createdAt = int(raw.createdAt, 0, 8.64e15, fallbackCreated);
   w.updatedAt = int(raw.updatedAt, 0, 8.64e15, 0);
   return w;
 }
@@ -172,8 +172,9 @@ export function cleanState(raw: any): any {
   const out: any = { v: 5, wirds: [], deleted: {}, updatedAt: 0 };
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.wirds)) return out;
   const seen = new Set<string>();
-  for (const r of raw.wirds) {
-    const w = cleanWird(r);
+  for (let i = 0; i < raw.wirds.length; i++) {
+    const r = raw.wirds[i];
+    const w = cleanWird(r, i + 1);
     if (!w || seen.has(w.id)) continue;
     seen.add(w.id);
     out.wirds.push(w);
@@ -202,7 +203,8 @@ export function mergeStates(a: any, b: any): any {
   if (!a) return b;
   if (!b) return a;
   const newer = (b.updatedAt || 0) >= (a.updatedAt || 0) ? b : a;
-  const deleted = Object.assign({}, a.deleted || {}, b.deleted || {});
+  const deleted: Record<string, number> = { ...(a.deleted || {}) };
+  Object.keys(b.deleted || {}).forEach((id) => { deleted[id] = Math.max(deleted[id] || 0, b.deleted[id] || 0); });
   const byId: Record<string, any> = {};
   [...(a.wirds || []), ...(b.wirds || [])].forEach((w) => {
     const cur = byId[w.id];
@@ -213,9 +215,10 @@ export function mergeStates(a: any, b: any): any {
     const other = pick === w ? cur : w;
     byId[w.id] = Object.assign({}, pick, { log: Object.assign({}, other.log || {}, pick.log || {}) });
   });
-  const order = (newer.wirds || []).map((w: any) => w.id);
-  Object.keys(byId).forEach((id) => { if (!order.includes(id)) order.push(id); });
-  const wirds = order.map((id: string) => byId[id]).filter((w: any) => w && !(deleted[w.id] && deleted[w.id] >= (w.updatedAt || 0)));
+  // Cards are ordered by when they were created (then id), so every device lands on the same order.
+  const wirds = Object.values(byId)
+    .filter((w: any) => !(deleted[w.id] && deleted[w.id] >= (w.updatedAt || 0)))
+    .sort((x: any, y: any) => (x.createdAt || 0) - (y.createdAt || 0) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
   return { v: 5, wirds, deleted, theme: newer.theme || a.theme || b.theme, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0) };
 }
 

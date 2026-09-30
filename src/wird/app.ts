@@ -234,7 +234,7 @@ export function createWirdApp(root, opts = {}) {
       if (editing && !d.sel.items.length) h += '<p class="hint">Currently pages ' + esc(d.ranges) + ". Pick surahs or juz to replace it.</p>";
     }
     if (d.type === "custom") h += '<label class="lbl" for="fr">Pages</label><input type="text" id="fr" value="' + esc(d.ranges) + '" placeholder="e.g. 1-50, 582-604"><p class="hint">Madani page ranges separated by commas.</p>';
-    h += '<p class="count"><strong id="pcount">' + (pages ? pages.length + " pages" : "Nothing picked yet") + "</strong>" + (pages && pages.length ? "<span>pages " + esc(compress(pages)) + "</span>" : "") + "</p>";
+    h += '<p class="count"><strong id="pcount">' + (pages ? pages.length + " pages" : "Nothing picked yet") + "</strong>" + (pages && pages.length ? "<span>p. " + esc(compress(pages)) + "</span>" : "") + "</p>";
     h += '<p class="lbl">Direction</p><div class="seg"><button class="chip' + (d.dir === 1 ? " on" : "") + '" data-dir="1" aria-pressed="' + (d.dir === 1) + '">From Al-Fatihah</button><button class="chip' + (d.dir === -1 ? " on" : "") + '" data-dir="-1" aria-pressed="' + (d.dir === -1) + '">From An-Nas</button></div>';
     if (!editing) h += '<label class="lbl" for="fs">Where are you now?</label><input type="number" id="fs" inputmode="numeric" min="1" max="604" value="' + esc(d.start) + '" placeholder="Page number, or leave empty to start at the beginning">';
     const rem = draftRemaining(pages);
@@ -310,7 +310,7 @@ export function createWirdApp(root, opts = {}) {
       '<p class="where">' + esc(posText(w)) + "</p>" +
       '<p class="sub">Juz ' + juzOf(w.page) + ", " + (i + 1) + " of " + list.length + " pages, " + esc(w.round.toLowerCase()) + " " + w.cycle + (w.ayah ? "<br>Page " + w.page + ": " + esc(rangeText(w.page)) : "") + '</p><p class="msg center" id="pmsg" role="status"></p>' +
       '<div class="quick">' + [2, 5, 10, 20].map(n => '<button class="chip" data-q="' + n + '">+' + n + "</button>").join("") + "</div>" +
-      '<div class="quick"><button class="chip flag' + (weakHere ? " on" : "") + '" id="weak" aria-pressed="' + weakHere + '">' + ICON.flag + (weakHere ? " Marked weak" : " Mark weak") + '</button><a class="chip ext" href="https://quran.com/page/' + w.page + '" target="_blank" rel="noopener">Open page ' + ICON.ext + '</a><button class="chip" id="share">' + ICON.share + " Share</button></div>";
+      '<div class="quick"><button class="chip flag' + (weakHere ? " on" : "") + '" id="weak" aria-label="Mark this page as weak" aria-pressed="' + weakHere + '">' + ICON.flag + (weakHere ? " Weak ✓" : " Weak") + '</button><a class="chip ext" href="https://quran.com/page/' + w.page + '" target="_blank" rel="noopener">Open page ' + ICON.ext + '</a><button class="chip" id="share">' + ICON.share + " Share</button></div>";
     if (parts) {
       const per = w.target / parts, need = Math.max(1, Math.ceil(per * (done + 1) - tn - 1e-9));
       h += '<section class="sit"><div class="dots big" aria-label="' + done + " of " + parts + ' sittings done">' + Array.from({ length: parts }, (_, k) => '<i class="' + (k < done ? "on" : "") + '"><b>' + (k + 1) + "</b></i>").join("") + "</div>" +

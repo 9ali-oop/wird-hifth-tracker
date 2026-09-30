@@ -404,7 +404,8 @@ describe("sync merge entry point", () => {
     const remote = { wirds: [{ ...s.wirds[0], page: 200, updatedAt: s.wirds[0].updatedAt + 1000 }, { id: "srv1", name: "From phone", ranges: "1-30", type: "custom", page: 5, updatedAt: 1 }], deleted: {}, updatedAt: s.updatedAt + 1000 }
     app.applyRemote(remote)
     expect(app.getState().wirds).toHaveLength(2)
-    expect(app.getState().wirds[0].page).toBe(200)
+    expect(app.getState().wirds.find((w: any) => w.id === s.wirds[0].id).page).toBe(200)
+    expect(app.getState().wirds.find((w: any) => w.id === "srv1").name).toBe("From phone")
   })
   it("applyRemote ignores junk", async () => {
     await makeKhatmah("10")
