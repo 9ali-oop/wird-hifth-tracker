@@ -42,12 +42,12 @@ describe("first run", () => {
   it("shows a welcome screen with no wirds and no baked-in defaults", async () => {
     expect($(".welcome")).toBeTruthy()
     expect(app.getState().wirds).toEqual([])
-    expect($$(".wcard")).toHaveLength(0)
+    expect($$(".hero")).toHaveLength(0)
     expect(root.textContent).not.toMatch(/562|248/)
   })
   it("offers the three wird types", async () => {
     expect($$(".choice").map((b) => b.textContent)).toEqual([
-      expect.stringContaining("Khatmah"), expect.stringContaining("Hifz cycle"), expect.stringContaining("Custom"),
+      expect.stringContaining("Khatmah"), expect.stringContaining("Hifz revision"), expect.stringContaining("Something else"),
     ])
   })
 })
@@ -61,7 +61,7 @@ describe("creating wirds", () => {
   it("starts at the page you give, and snaps into the range when it is outside it", async () => {
     await makeKhatmah("300")
     expect(only().page).toBe(300)
-    await go("#new/custom"); await type("#fr", "10-20"); await type("#fs", "5"); await click("#fsave")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "10-20"); await type("#fs", "5"); await click("#fsave")
     expect(app.getState().wirds[1].page).toBe(10)
   })
   it.each(["0", "605", "-3", "abc"])("rejects starting page %j", async (bad) => {
@@ -77,23 +77,22 @@ describe("creating wirds", () => {
     expect($("#pcount").textContent).toBe("Nothing picked yet")
     await click("#fsave")
     expect($("#fmsg").textContent).toMatch(/at least one/)
-    await click('[data-item="1"]'); await click('[data-item="114"]')
+    await click('[data-tab="surah"]')
+    await click('[data-surah="1"]'); await click('[data-surah="114"]')
     expect($("#pcount").textContent).toBe("2 pages")
     await click("#fsave")
     expect(only()).toMatchObject({ type: "hifz", round: "Cycle", ranges: "1, 604" })
   })
   it("hifz run: juz 29 to 30 is pages 562-604, also with An-Nas first", async () => {
     await go("#new/hifz")
-    await click('[data-by="juz"]')
-    ;($("#rf") as HTMLSelectElement).value = "29"; ;($("#rt") as HTMLSelectElement).value = "30"
-    await click("#radd")
+    await click('[data-juz="29"]'); await click('[data-juz="30"]')
     expect($("#pcount").textContent).toBe("43 pages")
     await click('[data-dir="-1"]')
     await click("#fsave")
     expect(only()).toMatchObject({ ranges: "562-604", dir: -1, page: 604 })
   })
   it("custom: rejects bad ranges and accepts good ones", async () => {
-    await go("#new/custom")
+    await go("#new/custom"); await click('[data-tab="pages"]')
     for (const bad of ["", "0-5", "1-605", "5-1", "x"]) { await type("#fr", bad); await click("#fsave"); expect(app.getState().wirds).toHaveLength(0) }
     await type("#fr", "1-248, 562-604"); await click("#fsave")
     expect(only().ranges).toBe("1-248, 562-604")
@@ -101,7 +100,7 @@ describe("creating wirds", () => {
   it("trims and caps names, falls back to the type name when empty", async () => {
     await go("#new/khatmah"); await type("#fn", "   "); await click("#fsave")
     expect(only().name).toBe("Khatmah")
-    await go("#new/custom"); await type("#fr", "1-2"); await type("#fn", "x".repeat(200)); await click("#fsave")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "1-2"); await type("#fn", "x".repeat(200)); await click("#fsave")
     expect(app.getState().wirds[1].name).toHaveLength(40)
   })
   it("daily target is clamped to 0..604 and pairs with sittings", async () => {
@@ -168,14 +167,14 @@ describe("stepping through pages", () => {
     expect(only().log[dayKey()]).toBe(20)
   })
   it("a backwards wird (An-Nas first) steps down through the pages", async () => {
-    await go("#new/custom"); await type("#fr", "560-604"); await click('[data-dir="-1"]'); await click("#fsave")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "560-604"); await click('[data-dir="-1"]'); await click("#fsave")
     expect(only().page).toBe(604)
     await click("#next")
     expect(only().page).toBe(603)
     expect($("#next").textContent).toBe("−") // the number goes down, so the sign is minus
   })
   it("a hifz wird only visits the memorised pages", async () => {
-    await go("#new/custom"); await type("#fr", "1-2, 10"); await click("#fsave")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "1-2, 10"); await click("#fsave")
     await click("#next"); await click("#next")
     expect(only().page).toBe(10)
     await click("#next")
@@ -187,7 +186,7 @@ describe("stepping through pages", () => {
     await type("#pg", "0"); expect($("#pmsg").textContent).toMatch(/1 to 604/); expect(only().page).toBe(77)
     await type("#pg", "605"); expect(only().page).toBe(77)
     await type("#pg", ""); expect(only().page).toBe(77)
-    await go("#new/custom"); await type("#fr", "10-20"); await click("#fsave")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "10-20"); await click("#fsave")
     await type("#pg", "50"); expect(app.getState().wirds[1].page).toBe(10)
     expect($("#pmsg").textContent).toMatch(/isn't in this wird/)
   })
@@ -223,7 +222,7 @@ describe("ayah bookmark and jump", () => {
     expect(only()).toMatchObject({ page: 42, ayah: [2, 255] })
   })
   it("jump refuses an ayah on a page outside the wird", async () => {
-    await go("#new/custom"); await type("#fr", "1-2"); await click("#fsave")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "1-2"); await click("#fsave")
     ;($("#js") as HTMLSelectElement).value = "36"; await type("#ja", "1"); await click("#jgo")
     expect($("#jmsg").textContent).toMatch(/isn't in this wird/)
     expect(only().page).toBe(1)
@@ -235,21 +234,22 @@ describe("weak pages, juz map, sittings", () => {
     await makeKhatmah("10")
     await click("#weak")
     expect(only().weak).toEqual([10])
-    expect($(".wk a").getAttribute("href")).toBe("https://quran.com/page/10")
     await click("#next"); await click("#weak")
     expect(only().weak).toEqual([10, 11])
+    await go("#progress")
+    expect($(".wk a").getAttribute("href")).toBe("https://quran.com/page/10")
     await click('[data-unweak="10"]')
     expect(only().weak).toEqual([11])
     expect(only().page).toBe(11)
   })
   it("editing the page set drops weak pages that are no longer part of the wird", async () => {
-    await go("#new/custom"); await type("#fr", "1-20"); await click("#fsave"); await type("#pg", "15"); await click("#weak")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "1-20"); await click("#fsave"); await type("#pg", "15"); await click("#weak")
     expect(only().weak).toEqual([15])
     await go("#w/" + only().id + "/edit"); await type("#fr", "1-10"); await click("#fsave")
     expect(only().weak).toEqual([])
   })
   it("juz map: tapping a juz moves you to its first page, with undo", async () => {
-    await makeKhatmah()
+    await makeKhatmah(); await go("#progress")
     await click('[data-jz="562"]')
     expect(only().page).toBe(562)
     expect($$(".jz.here")).toHaveLength(1)
@@ -259,7 +259,7 @@ describe("weak pages, juz map, sittings", () => {
     expect(only().page).toBe(1)
   })
   it("juz map disables juz that are not in the wird", async () => {
-    await go("#new/custom"); await type("#fr", "562-604"); await click("#fsave")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "562-604"); await click("#fsave"); await go("#progress")
     expect($$(".jz.out")).toHaveLength(28)
     expect($$(".jz.out").every((b) => (b as HTMLButtonElement).disabled)).toBe(true)
   })
@@ -273,13 +273,13 @@ describe("weak pages, juz map, sittings", () => {
     expect($$(".dots.big i.on")).toHaveLength(4)
     expect($(".sit .hint").textContent).toMatch(/Every sitting done/)
     await click("#back")
-    expect($(".wcard").className).toContain("met")
+    expect($(".hero").className).toContain("met")
   })
 })
 
 describe("editing and deleting", () => {
   it("edit keeps position and log, and changing the pages snaps the bookmark forward", async () => {
-    await go("#new/custom"); await type("#fr", "1-100"); await click("#fsave"); await type("#pg", "50")
+    await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "1-100"); await click("#fsave"); await type("#pg", "50")
     await go("#w/" + only().id + "/edit"); await type("#fr", "60-100"); await click("#fsave")
     expect(only().page).toBe(60)
     expect(only().ranges).toBe("60-100")
@@ -308,7 +308,7 @@ describe("persistence and corrupt storage", () => {
     app.destroy()
     app = createWirdApp(root)
     expect(only()).toMatchObject({ page: 124 })
-    expect($(".wcard, .dial")).toBeTruthy()
+    expect($(".hero, .dial")).toBeTruthy()
   })
   it.each(["not json", "null", "[]", '{"wirds":"x"}', '{"wirds":[1,null,{"id":5}]}'])("starts clean from corrupt storage %j", async (raw) => {
     localStorage.setItem(KEY, raw)
@@ -335,10 +335,11 @@ describe("security: hostile data", () => {
     await boot({ wirds: [{ id: '"><img src=x onerror="window.__pwned=1">', name: '<img src=x onerror="window.__pwned=1">', ranges: "1-10", type: "custom", page: 1 }] })
     expect((window as any).__pwned).toBeUndefined()
     expect(root.querySelector("img")).toBeNull()
-    expect($(".wname").textContent).toContain("<img")
+    expect($(".hname").textContent).toContain("<img")
   })
   it("a hostile backup code is cleaned before it is loaded", async () => {
     const bad = { wirds: [{ id: '"><script>window.__pwned=1</script>', name: "<b>x</b>", ranges: "1-3", type: "custom", page: "1<script>", target: "abc" }] }
+    await go("#settings")
     ;($("#bk") as HTMLTextAreaElement).value = btoa(unescape(encodeURIComponent(JSON.stringify(bad))))
     await click("#imp"); await click("#imp")
     expect(root.querySelector("script")).toBeNull()
@@ -350,11 +351,11 @@ describe("security: hostile data", () => {
 
 describe("backup and restore", () => {
   it("restore needs a valid code, asks twice, and stamps wirds as newer", async () => {
-    await makeKhatmah("77"); await click("#back")
+    await makeKhatmah("77"); await go("#settings")
     await click("#exp")
     const code = ($("#bk") as HTMLTextAreaElement).value
     // wipe, then restore
-    app.destroy(); await boot();
+    app.destroy(); await boot(); await go("#settings")
     ;($("#bk") as HTMLTextAreaElement).value = "garbage"
     await click("#imp"); expect($("#bmsg").textContent).toMatch(/isn't a wird backup/)
     ;($("#bk") as HTMLTextAreaElement).value = btoa(JSON.stringify({ wirds: [] })); await click("#imp")
@@ -367,7 +368,7 @@ describe("backup and restore", () => {
     expect(only().updatedAt).toBeGreaterThanOrEqual(before)
   })
   it("restoring tombstones wirds that are not in the backup", async () => {
-    await makeKhatmah(); const gone = only().id; await click("#back")
+    await makeKhatmah(); const gone = only().id; await go("#settings")
     ;($("#bk") as HTMLTextAreaElement).value = btoa(JSON.stringify({ wirds: [{ id: "keep1", name: "K", ranges: "1-5", type: "custom", page: 2 }] }))
     await click("#imp"); await click("#imp")
     expect(app.getState().deleted[gone]).toBeGreaterThan(0)
@@ -377,7 +378,7 @@ describe("backup and restore", () => {
 
 describe("themes", () => {
   it("switching palette and mode is saved and applied", async () => {
-    await click("summary")
+    await go("#settings")
     await click('[data-pal="ocean"]')
     expect(state().theme.pal).toBe("ocean")
     expect(document.getElementById("wird-pal")!.textContent).toContain("--bg:#EAF0F4")
@@ -387,11 +388,12 @@ describe("themes", () => {
     expect(document.getElementById("wird-pal")!.textContent).toContain("--motif:")
   })
   it("keeps keyboard focus on the palette button after a re-render", async () => {
-    await click("summary")
+    await go("#settings")
     const b = $('[data-pal="rose"]'); b.focus(); b.click()
     expect((document.activeElement as HTMLElement).dataset.pal).toBe("rose")
   })
   it("every palette can be selected", async () => {
+    await go("#settings")
     for (const k of $$("[data-pal]").map((b) => b.dataset.pal)) { await click(`[data-pal="${k}"]`); expect(state().theme.pal).toBe(k) }
     expect($$("[data-pal]").length).toBe(8)
   })
@@ -417,14 +419,14 @@ describe("sync merge entry point", () => {
 describe("home summary", () => {
   it("shows today's pages, streak and the week strip", async () => {
     await makeKhatmah(); await click('[data-q="5"]'); await click("#back")
-    expect($(".summary").textContent).toMatch(/5\s*pages today/)
-    expect($(".summary").textContent).toMatch(/1\s*day streak/)
+    expect($(".hnum strong").textContent).toBe("6") // no daily goal, so the ring shows the page
+    expect($(".streak b").textContent).toBe("1")
     expect($$(".week .on")).toHaveLength(1)
   })
   it("the streak counts yesterday but not a gap", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(2026, 8, 30, 12, 0))
     await boot({ wirds: [{ id: "s1", name: "S", ranges: "1-604", type: "khatmah", page: 5, log: { "2026-9-29": 3, "2026-9-28": 3, "2026-9-26": 3 }, updatedAt: 1 }] })
-    expect($(".summary").textContent).toMatch(/2\s*day streak/)
+    expect($(".streak b").textContent).toBe("2")
   })
   it("late-night reading before 3am counts for the day before", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(2026, 8, 30, 1, 30))
@@ -449,5 +451,71 @@ describe("merge-safe history", () => {
     expect(app.getState().wirds).toHaveLength(0)
     expect(app.getState().gone.map((w: any) => w.id)).toEqual([id])
     expect($(".welcome")).toBeTruthy()
+  })
+})
+
+describe("picking any mix of ranges", () => {
+  it("juz 2-6 and 12-15 in one wird, by tapping", async () => {
+    await go("#new/hifz")
+    for (const j of [2, 3, 4, 5, 6, 12, 13, 14, 15]) await click(`[data-juz="${j}"]`)
+    expect($$(".pk").map((e) => e.firstChild!.textContent)).toEqual(["Juz 2 to 6", "Juz 12 to 15"])
+    expect($("#pcount").textContent).toBe("180 pages")
+    await click("#fsave")
+    expect(only().ranges).toBe("22-121, 222-301")
+    expect(only().sel).toEqual({ juz: [2, 3, 4, 5, 6, 12, 13, 14, 15], surah: [], pages: "" })
+  })
+  it("mixes juz, surahs and pages, and each run can be removed", async () => {
+    await go("#new/hifz")
+    await click('[data-juz="30"]')
+    await click('[data-tab="surah"]'); await click('[data-surah="18"]')
+    await click('[data-tab="pages"]'); await type("#fr", "1-3")
+    expect($$(".pk").map((e) => e.firstChild!.textContent)).toEqual(["Juz 30", "Al-Kahf", "Pages 1 to 3"])
+    await click('[data-run="surah:18:18"]')
+    expect($$(".pk").map((e) => e.firstChild!.textContent)).toEqual(["Juz 30", "Pages 1 to 3"])
+    await click("#fsave")
+    expect(only().ranges).toBe("1-3, 582-604")
+  })
+  it("a surah run can be added in one go, and search filters the list", async () => {
+    await go("#new/hifz"); await click('[data-tab="surah"]')
+    ;($("#rf") as HTMLSelectElement).value = "67"; ;($("#rt") as HTMLSelectElement).value = "114"
+    await click("#radd")
+    expect($$(".pk").map((e) => e.firstChild!.textContent)).toEqual(["Al-Mulk to An-Nas"])
+    await type("#sq", "kahf")
+    expect($$(".srow").filter((r) => !r.hidden).map((r) => r.dataset.surah)).toEqual(["18"])
+  })
+  it("editing an old wird made from page ranges shows them as editable runs", async () => {
+    await boot({ wirds: [{ id: "old1", name: "Old", type: "hifz", round: "Cycle", ranges: "1-248, 562-604", page: 5, updatedAt: 1, createdAt: 1 }] })
+    await go("#w/old1/edit")
+    expect($$(".pk").map((e) => e.firstChild!.textContent)).toEqual(["Pages 1 to 248", "Pages 562 to 604"])
+  })
+  it("old saved selections by juz or surah still load", async () => {
+    await boot({ wirds: [{ id: "old2", name: "Old", type: "hifz", ranges: "582-604", sel: { by: "juz", items: [30] }, page: 590, updatedAt: 1, createdAt: 1 }] })
+    expect(only().sel).toEqual({ juz: [30], surah: [], pages: "" })
+  })
+})
+
+describe("today screen", () => {
+  it("logs pages straight from the hero, with undo", async () => {
+    await makeKhatmah(); await go("")
+    await click('[data-q="5"]')
+    expect(only().page).toBe(6)
+    expect($(".hnum strong").textContent).toBe("6") // no target: the ring shows the page
+    await click(".toast button")
+    expect(only().page).toBe(1)
+  })
+  it("switches between wirds and remembers the choice", async () => {
+    await makeKhatmah(); await go("#new/custom"); await click('[data-tab="pages"]'); await type("#fr", "5-9"); await click("#fsave"); await go("")
+    expect($$(".sp")).toHaveLength(2)
+    const first = app.getState().wirds[0].id
+    await click(`[data-focus="${first}"]`)
+    expect($(".hname").textContent).toBe("Khatmah")
+    expect(localStorage.getItem("wird-focus")).toBe(first)
+  })
+  it("has a tab bar on the main screens only", async () => {
+    await makeKhatmah(); await go("")
+    expect($(".tabs")).toBeTruthy()
+    await go("#progress"); expect($(".tab.on").textContent).toBe("Progress")
+    await go("#settings"); expect($(".tab.on").textContent).toBe("Settings")
+    await go("#w/" + only().id); expect($(".tabs")).toBeNull()
   })
 })

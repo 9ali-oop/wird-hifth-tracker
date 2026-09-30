@@ -21,10 +21,10 @@ const sampleIcs = (fajr = "Athan 05:36 · Iqamah 06:00") => [
   "END:VCALENDAR",
 ].join("\r\n")
 
-async function boot(saved?: unknown, opts: any = {}) {
+async function boot(saved?: unknown, opts: any = {}, hash = "#settings") {
   localStorage.clear()
   if (saved) localStorage.setItem(KEY, JSON.stringify(saved))
-  location.hash = ""
+  location.hash = hash
   root = document.createElement("div")
   document.body.innerHTML = ""
   document.body.appendChild(root)
@@ -151,7 +151,7 @@ describe("next up strip", () => {
   const at = (h: number, m: number) => new Date(2026, 8, 30, h, m)
   async function withTimes(now: Date, extra: any = {}) {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(now)
-    await boot({ ...withWird, prayer: { mode: "manual", manual: { dhuhr: "13:45", asr: "16:15" }, prayers: ["dhuhr", "asr"], offset: 30, dir: -1, pages: 3, updatedAt: 9, ...extra } })
+    await boot({ ...withWird, prayer: { mode: "manual", manual: { dhuhr: "13:45", asr: "16:15" }, prayers: ["dhuhr", "asr"], offset: 30, dir: -1, pages: 3, updatedAt: 9, ...extra } }, {}, "")
   }
   it("shows the coming jamat, the reminder wording, the wird page and the countdown", async () => {
     await withTimes(at(12, 0))
@@ -178,11 +178,11 @@ describe("next up strip", () => {
     expect($(".nextup").textContent).toMatch(/in 1[45] h/)
   })
   it("says so when reminders are on but there are no times", async () => {
-    await boot({ ...withWird, prayer: { mode: "calendar", prayers: ["dhuhr"], updatedAt: 9 } })
+    await boot({ ...withWird, prayer: { mode: "calendar", prayers: ["dhuhr"], updatedAt: 9 } }, {}, "")
     expect($(".nextup").textContent).toMatch(/no prayer times yet/)
   })
   it("is absent with no reminders selected, and with no wirds it still does not break", async () => {
-    await boot({ wirds: [], prayer: { mode: "manual", manual: { dhuhr: "13:45" }, prayers: ["dhuhr"], updatedAt: 9 } })
+    await boot({ wirds: [], prayer: { mode: "manual", manual: { dhuhr: "13:45" }, prayers: ["dhuhr"], updatedAt: 9 } }, {}, "")
     expect(root.querySelector(".welcome")).toBeTruthy()
   })
   it("supports after-jamat timing", async () => {
@@ -269,7 +269,7 @@ describe("notifications", () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] })
     vi.setSystemTime(new Date(2026, 8, 30, 12, 0))
     localStorage.clear(); localStorage.setItem(KEY, JSON.stringify({ ...withWird, prayer: { mode: "manual", manual: { dhuhr: "13:45" }, prayers: ["dhuhr"], offset: 30, dir: -1, pages: 3, updatedAt: 9 } }))
-    location.hash = ""; root = document.createElement("div"); document.body.innerHTML = ""; document.body.appendChild(root)
+    location.hash = "#settings"; root = document.createElement("div"); document.body.innerHTML = ""; document.body.appendChild(root)
     app.destroy(); app = createWirdApp(root)
     $('[data-poff="15"]').click(); await vi.advanceTimersByTimeAsync(0)
     await vi.advanceTimersByTimeAsync(80 * 60000) // 13:20, the old 13:15 time has passed

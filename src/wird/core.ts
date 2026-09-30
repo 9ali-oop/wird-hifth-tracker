@@ -70,10 +70,34 @@ export function parseRanges(t: unknown): number[] | null {
   }
   return [...set].sort((a, b) => a - b);
 }
-export function selPages(sel: { by: string; items: number[] }): number[] {
+// A selection can mix any number of juz, surahs and page ranges, e.g. juz 2-6 and 12-15 plus Al-Mulk.
+export type Sel = { juz: number[]; surah: number[]; pages: string };
+export const emptySel = (): Sel => ({ juz: [], surah: [], pages: "" });
+export function selPages(sel: any): number[] {
   const set = new Set<number>();
-  sel.items.forEach((x) => (sel.by === "juz" ? juzPages(x) : surahPages(x)).forEach((p) => set.add(p)));
+  if (!sel) return [];
+  (sel.juz || []).forEach((j: number) => juzPages(j).forEach((p) => set.add(p)));
+  (sel.surah || []).forEach((x: number) => surahPages(x).forEach((p) => set.add(p)));
+  (parseRanges(sel.pages) || []).forEach((p) => set.add(p));
+  if (sel.by && Array.isArray(sel.items)) sel.items.forEach((x: number) => (sel.by === "juz" ? juzPages(x) : surahPages(x)).forEach((p) => set.add(p)));
   return [...set].sort((a, b) => a - b);
+}
+/** Consecutive runs in a sorted list: [2,3,4,6] -> [[2,4],[6,6]]. */
+export function runsOf(list: number[]): [number, number][] {
+  const out: [number, number][] = [];
+  for (const x of [...list].sort((a, b) => a - b)) {
+    const last = out[out.length - 1];
+    if (last && x === last[1] + 1) last[1] = x; else if (!last || x > last[1]) out.push([x, x]);
+  }
+  return out;
+}
+/** Human labels for what a selection contains, one per run, e.g. "Juz 2 to 6", "Al-Mulk to An-Nas", "Pages 10 to 20". */
+export function describeSel(sel: Sel): { kind: "juz" | "surah" | "pages"; from: number; to: number; label: string }[] {
+  const out: { kind: "juz" | "surah" | "pages"; from: number; to: number; label: string }[] = [];
+  runsOf(sel.juz).forEach(([a, b]) => out.push({ kind: "juz", from: a, to: b, label: a === b ? "Juz " + a : "Juz " + a + " to " + b }));
+  runsOf(sel.surah).forEach(([a, b]) => out.push({ kind: "surah", from: a, to: b, label: a === b ? surahName(a) : surahName(a) + " to " + surahName(b) }));
+  runsOf(parseRanges(sel.pages) || []).forEach(([a, b]) => out.push({ kind: "pages", from: a, to: b, label: a === b ? "Page " + a : "Pages " + a + " to " + b }));
+  return out;
 }
 
 // ---------- dates (the day rolls over at 3am, so a late-night wird still counts for "today") ----------
@@ -128,6 +152,17 @@ const strict = (v: unknown, lo: number, hi: number) => {
   const n = int(v, -Infinity, Infinity, 0);
   return n >= lo && n <= hi ? n : 0;
 };
+export function cleanSel(raw: any): Sel | null {
+  if (!raw || typeof raw !== "object") return null;
+  const nums = (arr: unknown, max: number) => (Array.isArray(arr) ? arr.map((x) => strict(x, 1, max)).filter(Boolean) : []);
+  const uniq = (a: number[]) => [...new Set(a)].sort((x, y) => x - y);
+  let juz = nums(raw.juz, 30), surah = nums(raw.surah, 114);
+  if (raw.by === "juz") juz = juz.concat(nums(raw.items, 30));
+  if (raw.by === "surah") surah = surah.concat(nums(raw.items, 114));
+  const pl = typeof raw.pages === "string" ? parseRanges(raw.pages) : null;
+  const out = { juz: uniq(juz), surah: uniq(surah), pages: pl ? compress(pl) : "" };
+  return out.juz.length || out.surah.length || out.pages ? out : null;
+}
 const rid = () => Math.random().toString(36).slice(2, 10);
 
 export function cleanWird(raw: any, fallbackCreated = 0): any | null {
@@ -161,12 +196,7 @@ export function cleanWird(raw: any, fallbackCreated = 0): any | null {
   if (raw.logAt && typeof raw.logAt === "object") Object.keys(raw.logAt).forEach((k) => { if (KEY_RE.test(k)) { const t = int(raw.logAt[k], 0, 8.64e15, 0); if (t) w.logAt[k] = t; } });
   trimLog(w);
   w.weak = Array.isArray(raw.weak) ? [...new Set<number>(raw.weak.map((p: unknown) => int(p, 0, PAGES, 0)).filter((p: number) => p && pages.includes(p)))].sort((a, b) => a - b) : [];
-  w.sel = null;
-  if (raw.sel && typeof raw.sel === "object" && (raw.sel.by === "surah" || raw.sel.by === "juz") && Array.isArray(raw.sel.items)) {
-    const max = raw.sel.by === "juz" ? 30 : 114;
-    const items = [...new Set<number>(raw.sel.items.map((x: unknown) => strict(x, 1, max)).filter(Boolean))].sort((a, b) => a - b);
-    if (items.length) w.sel = { by: raw.sel.by, items };
-  }
+  w.sel = cleanSel(raw.sel);
   // A missing creation time must not be "now": cleaning has to give the same answer every time it runs.
   w.createdAt = int(raw.createdAt, 0, 8.64e15, fallbackCreated);
   w.updatedAt = int(raw.updatedAt, 0, 8.64e15, 0);

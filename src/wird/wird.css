@@ -1,212 +1,257 @@
-/* Wird app styles. Colours come from the palette variables set at runtime. */
+/* Wird. Colours come from the palette variables set at runtime (see themes.ts). */
 html, body { margin: 0; background: var(--bg); color: var(--ink); overflow-x: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-.wird-app { position: relative; isolation: isolate; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 16px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
-.wird-app::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: var(--motif, none); background-size: var(--motif-size, 56px); opacity: var(--motif-alpha, 0.12); -webkit-mask-image: linear-gradient(#000 0, transparent 46%); mask-image: linear-gradient(#000 0, transparent 46%); }
+.wird-app { --r: 22px; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06); min-height: 100vh; background: var(--bg); color: var(--ink); font-family: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 16px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
 .wird-app *, .wird-app *::before, .wird-app *::after { box-sizing: border-box; }
-.wird-app .wrap { max-width: 480px; margin: 0 auto; padding: calc(16px + env(safe-area-inset-top, 0px)) 18px calc(48px + env(safe-area-inset-bottom, 0px)); }
-.wird-app h1, .wird-app h2, .wird-app .wm, .wird-app .pg span, .wird-app .medal input, .wird-app .summary strong, .wird-app .srow strong { font-family: "Spectral", Georgia, "Times New Roman", serif; }
-.wird-app h1 { font-size: 1.35rem; font-weight: 600; margin: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wird-app h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 10px; }
+.wird-app .wrap { max-width: 520px; margin: 0 auto; padding: calc(18px + env(safe-area-inset-top, 0px)) 18px calc(40px + env(safe-area-inset-bottom, 0px)); }
+.wird-app .wrap.has-tabs { padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px)); }
+.wird-app h1, .wird-app h2 { margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+.wird-app h2 { font-size: 1.02rem; }
 .wird-app p { margin: 0 0 8px; }
 .wird-app .muted { color: var(--muted); }
-.wird-app .small { font-size: 0.88rem; }
+.wird-app .small { font-size: 0.86rem; }
 .wird-app .center { text-align: center; }
-.wird-app section { margin-top: 26px; }
-
-/* header */
-.wird-app .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
-.wird-app .brand { display: flex; align-items: baseline; gap: 10px; }
-.wird-app .wm { font-size: 2rem; font-weight: 600; letter-spacing: -0.01em; }
-.wird-app .ar { font-family: "Amiri", "Noto Naskh Arabic", "Geeza Pro", serif; font-size: 1.5rem; color: var(--accent); line-height: 1; }
-.wird-app .date { color: var(--muted); margin: 2px 0 16px; }
-.wird-app .bar { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; margin-bottom: 8px; }
-.wird-app .iconbtn { appearance: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
-
-/* summary strip */
-.wird-app .summary { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; margin-bottom: 14px; }
-.wird-app .summary > div { padding: 12px 10px; text-align: center; }
-.wird-app .summary > div + div { border-left: 1px solid var(--line); }
-.wird-app .summary strong { display: block; font-size: 1.6rem; line-height: 1.1; font-weight: 600; }
-.wird-app .summary > div > span { font-size: 0.8rem; color: var(--muted); }
-.wird-app .summary .week { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 8px 12px 12px; border-top: 1px solid var(--line); border-left: 0; }
-.wird-app .summary .week span { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 0.68rem; color: var(--muted); }
-.wird-app .summary .week i { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line); }
-.wird-app .summary .week .on i { background: var(--done); border-color: var(--done); }
-.wird-app .summary .week .now { color: var(--ink); font-weight: 600; }
-
-/* ornament */
-.wird-app .orn rect, .wird-app .orn circle { fill: none; stroke: var(--accent); stroke-width: 1.6; }
-.wird-app .orn circle { stroke-opacity: 0.35; }
-.wird-app .orn .rbg { stroke: var(--line); stroke-opacity: 1; stroke-width: 3.2; }
-.wird-app .orn .rfg { stroke: var(--done); stroke-opacity: 1; stroke-width: 3.6; stroke-linecap: round; transition: stroke-dasharray .5s ease; }
-.wird-app .orn .rfg.met { stroke: var(--accent); }
-
-/* wird cards */
-.wird-app .wcard { appearance: none; display: grid; grid-template-columns: 88px 1fr; gap: 14px; align-items: center; width: 100%; text-align: left; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px 14px 12px; margin-bottom: 12px; cursor: pointer; transition: transform .12s ease, border-color .12s; }
-.wird-app .wcard:active { transform: scale(0.985); }
-.wird-app .wcard.met { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-.wird-app .pg { position: relative; width: 88px; height: 88px; display: grid; place-items: center; }
-.wird-app .pg svg { position: absolute; inset: 0; }
-.wird-app .pg span { position: relative; font-size: 1.55rem; font-weight: 600; }
-.wird-app .wbody { min-width: 0; }
-.wird-app .wtop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.wird-app .wname { font-weight: 600; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wird-app .pill { flex: none; font-size: 0.75rem; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; }
-.wird-app .wpos { margin-top: 2px; }
-.wird-app .wmeta { color: var(--muted); font-size: 0.84rem; margin-top: 2px; }
-.wird-app .track { height: 5px; border-radius: 3px; background: var(--line); margin-top: 10px; overflow: hidden; }
-.wird-app .track i { display: block; height: 100%; background: var(--done); border-radius: 3px; }
-.wird-app .track.goal { margin-top: 4px; }
-.wird-app .track.goal i { background: var(--accent); }
-.wird-app .addcard { appearance: none; width: 100%; font: inherit; font-weight: 600; color: var(--muted); background: transparent; border: 1.5px dashed var(--line); border-radius: 18px; padding: 16px; cursor: pointer; }
-
-/* welcome */
-.wird-app .welcome { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px 18px; text-align: center; }
-.wird-app .welcome h2 { font-size: 1.35rem; margin-top: 8px; }
-.wird-app .welcome p { color: var(--muted); }
-.wird-app .choices { display: grid; gap: 8px; margin-top: 14px; text-align: left; }
-.wird-app .choice { appearance: none; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; cursor: pointer; }
-.wird-app .choice strong { display: block; }
-.wird-app .choice span { font-size: 0.86rem; color: var(--muted); }
-
-/* dial */
-.wird-app .dial { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; gap: 6px; margin-top: 4px; }
-.wird-app .step { appearance: none; height: 64px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 1.9rem; line-height: 1; cursor: pointer; }
-.wird-app .step:active { background: var(--done); color: var(--done-ink); }
-.wird-app .medal { position: relative; width: 200px; height: 200px; max-width: 100%; margin: 0 auto; display: grid; place-items: center; }
-.wird-app .medal svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.wird-app .medal .orn rect { stroke-width: 1; }
-.wird-app .medal .orn .rbg { stroke-width: 2.4; }
-.wird-app .medal .orn .rfg { stroke-width: 2.8; }
-.wird-app .medal input[type=number] { position: relative; width: 120px; text-align: center; font-size: 3.1rem; font-weight: 600; line-height: 1; color: var(--ink); background: transparent; border: none; padding: 0; margin-top: -8px; -moz-appearance: textfield; appearance: textfield; }
-.wird-app .medal input::-webkit-inner-spin-button, .wird-app .medal input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.wird-app .medal small { position: absolute; bottom: 58px; left: 0; right: 0; text-align: center; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-.wird-app .where { text-align: center; font-weight: 600; font-size: 1.12rem; margin: 6px 0 2px; }
-.wird-app .sub { text-align: center; color: var(--muted); font-size: 0.86rem; }
-.wird-app .quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 12px; }
-.wird-app .quick .ext { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
-
-/* stats */
-.wird-app .stats { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
-.wird-app .srow { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; }
-.wird-app .srow strong { display: block; font-size: 1.5rem; font-weight: 600; line-height: 1.1; }
-.wird-app .srow strong small { font-size: 0.9rem; color: var(--muted); }
-.wird-app .srow span { font-size: 0.78rem; color: var(--muted); }
-.wird-app .bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 14px; }
-.wird-app .bcol { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.wird-app .btrack { position: relative; width: 100%; height: 56px; background: var(--bg); border-radius: 6px; overflow: hidden; }
-.wird-app .btrack i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--done); border-radius: 6px 6px 0 0; }
-.wird-app .btrack b { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--accent); }
-.wird-app .bcol span { font-size: 0.7rem; color: var(--muted); }
-.wird-app .bcol em { font-style: normal; font-size: 0.7rem; min-height: 1em; }
-
-/* controls */
-.wird-app .btn { appearance: none; font: inherit; font-weight: 500; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 14px; cursor: pointer; min-height: 44px; }
-.wird-app .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.wird-app .btn.danger { color: var(--warn); border-color: var(--warn); background: transparent; margin-top: 10px; }
-.wird-app .btn.wide { width: 100%; }
-.wird-app .group { margin-bottom: 10px; }
-.wird-app .group p { margin: 0 0 6px; font-weight: 500; }
-.wird-app .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.wird-app .chip { appearance: none; font: inherit; font-size: 0.93rem; min-width: 44px; min-height: 40px; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
-.wird-app .chip.on { background: var(--done); border-color: var(--done); color: var(--done-ink); font-weight: 600; }
-.wird-app .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
-.wird-app .seg .chip { width: 100%; }
-.wird-app .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-.wird-app .row > * { flex: 1; min-width: 0; }
-.wird-app .row .btn { flex: none; }
-.wird-app .ayin { max-width: 92px; }
-.wird-app .lbl { display: block; margin: 18px 0 6px; font-weight: 600; }
-.wird-app .hint { color: var(--muted); font-size: 0.86rem; margin: 8px 0 0; }
-.wird-app .count { margin-top: 12px; font-size: 0.9rem; }
-.wird-app .count span { color: var(--muted); margin-left: 6px; }
-.wird-app input[type=text], .wird-app input[type=url], .wird-app input[type=time], .wird-app input[type=number]:not(#pg), .wird-app select, .wird-app textarea { width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
-.wird-app textarea { min-height: 90px; margin-top: 8px; font-size: 13px; font-family: ui-monospace, Menlo, Consolas, monospace; }
-.wird-app .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; margin-top: 10px; }
-.wird-app .list { max-height: 300px; overflow-y: auto; padding: 2px; margin-top: 6px; }
-.wird-app .fold { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; margin-top: 12px; }
-.wird-app .fold summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; gap: 8px; }
-.wird-app .fold[open] summary { margin-bottom: 10px; }
-.wird-app .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.wird-app .sw { appearance: none; font: inherit; font-size: 0.8rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px; cursor: pointer; text-align: left; }
-.wird-app .sw.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
-.wird-app .sw span { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin-bottom: 6px; }
-.wird-app .sw span i { flex: 1; }
-.wird-app .msg { font-size: 0.88rem; margin: 6px 0 0; min-height: 1.2em; }
-.wird-app .msg.err { color: var(--warn); }
-.wird-app .msg.ok { color: var(--done); }
-.wird-app .foot { color: var(--muted); font-size: 0.78rem; text-align: center; margin-top: 24px; }
-.wird-app .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 20; display: flex; align-items: center; gap: 14px; background: var(--ink); color: var(--bg); border-radius: 14px; padding: 10px 12px 10px 16px; font-size: 0.92rem; box-shadow: 0 8px 24px rgba(0,0,0,.18); max-width: calc(100% - 32px); }
-.wird-app .toast button { appearance: none; font: inherit; font-weight: 600; color: var(--bg); background: transparent; border: 1px solid currentColor; border-radius: 10px; padding: 6px 12px; cursor: pointer; }
-.wird-app button:focus-visible, .wird-app input:focus-visible, .wird-app select:focus-visible, .wird-app textarea:focus-visible, .wird-app summary:focus-visible, .wird-app a:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; }
 .wird-app [hidden] { display: none !important; }
+.wird-app .ar { font-family: "Amiri", "Noto Naskh Arabic", "Geeza Pro", serif; font-weight: 400; color: var(--accent); }
 
-/* account chip (rendered by React into the header) */
-.wird-acct { position: relative; }
-.wird-acct .acct-btn { appearance: none; display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px 5px 5px; min-height: 40px; cursor: pointer; }
-.wird-acct .acct-btn.signin { padding: 6px 14px; }
-.wird-acct .avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--done); color: var(--done-ink); font-size: 0.85rem; overflow: hidden; }
-.wird-acct .avatar img { width: 100%; height: 100%; object-fit: cover; }
-.wird-acct .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--done); }
-.wird-acct .dot.busy { background: var(--accent); }
-.wird-acct .dot.off { background: var(--muted); }
-.wird-acct .menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: 260px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; box-shadow: 0 12px 32px rgba(0,0,0,.14); }
-.wird-acct .menu p { margin: 0 0 6px; font-size: 0.88rem; }
-.wird-acct .menu .muted { color: var(--muted); }
-.wird-acct .menu button { appearance: none; width: 100%; font: inherit; font-weight: 500; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin-top: 8px; cursor: pointer; }
-.wird-acct .menu .err { color: var(--warn); }
-.wird-acct .gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+/* page headers */
+.wird-app .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 6px 2px 18px; }
+.wird-app .eyebrow { margin: 0 0 2px; color: var(--muted); font-size: 0.9rem; }
+.wird-app .title { font-size: 2rem; line-height: 1.1; }
+.wird-app .title .ar { font-size: 1.5rem; margin-left: 6px; }
+.wird-app .streak { display: inline-flex; align-items: center; gap: 4px; padding: 7px 12px; border-radius: 999px; background: var(--surface); color: var(--muted); box-shadow: var(--shadow); font-size: 1rem; }
+.wird-app .streak.on { color: var(--accent); }
+.wird-app .streak b { color: var(--ink); }
+.wird-app .bar { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; margin-bottom: 6px; }
+.wird-app .bar h1 { font-size: 1.15rem; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wird-app .iconbtn { appearance: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; border: 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); cursor: pointer; }
 
-/* sitting dots (cards) and sittings (wird screen) */
-.wird-app .dots { display: flex; gap: 5px; margin-top: 8px; }
-.wird-app .dots i { width: 22px; height: 6px; border-radius: 3px; background: var(--line); }
-.wird-app .dots i.on { background: var(--accent); }
-.wird-app .dots.big { justify-content: center; gap: 10px; margin-top: 0; }
-.wird-app .dots.big i { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--line); }
-.wird-app .dots.big i b { font-weight: 600; color: var(--muted); }
-.wird-app .dots.big i.on { background: var(--accent); border-color: var(--accent); }
-.wird-app .dots.big i.on b { color: var(--surface); }
-.wird-app .sit { margin-top: 18px; }
-.wird-app .sit .hint { margin-top: 10px; }
+/* wird switcher */
+.wird-app .switch { display: flex; gap: 8px; overflow-x: auto; margin: 0 -18px 14px; padding: 2px 18px 4px; scrollbar-width: none; }
+.wird-app .switch::-webkit-scrollbar { display: none; }
+.wird-app .sp { appearance: none; flex: none; font: inherit; font-weight: 600; font-size: 0.92rem; padding: 9px 16px; min-height: 40px; border-radius: 999px; border: 0; background: var(--surface); color: var(--muted); box-shadow: var(--shadow); cursor: pointer; }
+.wird-app .sp.on { background: var(--ink); color: var(--bg); }
 
-/* heat map */
-.wird-app .heat { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 10px; }
-.wird-app .heat b { text-align: center; font-size: 0.68rem; font-weight: 500; color: var(--muted); }
-.wird-app .heat i { aspect-ratio: 1; border-radius: 5px; background: var(--bg); border: 1px solid var(--line); }
-.wird-app .heat i.l1 { background: var(--done); opacity: 0.55; border-color: transparent; }
-.wird-app .heat i.l2 { background: var(--done); border-color: transparent; }
-.wird-app .heat i.now { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* hero */
+.wird-app .hero { position: relative; background: var(--done); color: var(--done-ink); border-radius: 28px; padding: 18px 18px 18px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,.14); overflow: hidden; }
+.wird-app .hero::after { content: ""; position: absolute; inset: auto -30% -60% -30%; height: 70%; background: radial-gradient(closest-side, rgba(255,255,255,.12), transparent); pointer-events: none; }
+.wird-app .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.wird-app .hname { font-weight: 700; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wird-app .hpill { flex: none; font-size: 0.78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.16); }
+.wird-app .hring { position: relative; width: 196px; height: 196px; margin: 10px auto 6px; }
+.wird-app .hring .ring { position: absolute; inset: 0; }
+.wird-app .ring .rt { fill: none; stroke: var(--line); stroke-width: 7; }
+.wird-app .ring .rp { fill: none; stroke: var(--done); stroke-width: 7; stroke-linecap: round; transition: stroke-dasharray .5s ease; }
+.wird-app .hero .ring .rt { stroke: currentColor; stroke-opacity: .18; }
+.wird-app .hero .ring .rp { stroke: currentColor; }
+.wird-app .hnum { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.wird-app .hnum strong { font-size: 3.6rem; font-weight: 800; line-height: 1; letter-spacing: -0.03em; }
+.wird-app .hnum span { font-size: 0.9rem; opacity: .85; margin-top: 4px; }
+.wird-app .done-badge { display: inline-flex; align-items: center; gap: 3px; margin-top: 6px; font-style: normal; font-weight: 700; font-size: 0.78rem; padding: 2px 10px 2px 6px; border-radius: 999px; background: var(--done-ink); color: var(--done); }
+.wird-app .done-badge svg { width: 16px; height: 16px; }
+.wird-app .hpos { margin: 4px 0 0; font-size: 1rem; }
+.wird-app .hsub { margin: 0 0 14px; opacity: .85; font-size: 0.92rem; }
+.wird-app .hquick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+.wird-app .qb { appearance: none; font: inherit; font-weight: 700; font-size: 1.05rem; min-height: 48px; border-radius: 16px; border: 1.5px solid rgba(255,255,255,.28); background: rgba(255,255,255,.1); color: inherit; cursor: pointer; }
+.wird-app .qb:active { transform: scale(.96); }
+.wird-app .cta { appearance: none; width: 100%; font: inherit; font-weight: 700; font-size: 1.02rem; min-height: 52px; border-radius: 16px; border: 0; background: var(--done-ink); color: var(--done); cursor: pointer; }
+.wird-app .hero .dots { justify-content: center; margin: 0 0 6px; }
+.wird-app .hero .dots i { background: rgba(255,255,255,.22); }
+.wird-app .hero .dots i.on { background: currentColor; }
 
-/* juz map */
-.wird-app .juzmap { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
-.wird-app .jz { appearance: none; font: inherit; font-size: 0.7rem; height: 40px; padding: 0; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
-.wird-app .jz.done { background: var(--done); border-color: var(--done); color: var(--done-ink); }
-.wird-app .jz.here { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 700; }
-.wird-app .jz.out { background: transparent; border-style: dashed; opacity: 0.45; cursor: default; }
+/* cards */
+.wird-app .card { display: block; background: var(--surface); border-radius: var(--r); padding: 16px; margin-top: 14px; box-shadow: var(--shadow); }
+.wird-app .card-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.wird-app .card.empty { text-align: center; }
+.wird-app .track { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin-bottom: 10px; }
+.wird-app .track i { display: block; height: 100%; background: var(--done); border-radius: 99px; }
+.wird-app .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.wird-app .week span { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--muted); }
+.wird-app .week i { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--bg); color: var(--done-ink); }
+.wird-app .week i svg { width: 18px; height: 18px; }
+.wird-app .week .on i { background: var(--done); }
+.wird-app .week .now { color: var(--ink); font-weight: 700; }
+.wird-app .week .now i { box-shadow: 0 0 0 2px var(--accent); }
+.wird-app .addrow { appearance: none; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 14px; font: inherit; font-weight: 600; color: var(--muted); background: transparent; border: 1.5px dashed var(--line); border-radius: var(--r); padding: 14px; cursor: pointer; }
 
-/* weak pages */
-.wird-app .flag.on { background: var(--warn); border-color: var(--warn); color: var(--surface); }
-.wird-app .flag { display: inline-flex; align-items: center; gap: 6px; }
-.wird-app .wk { display: inline-flex; align-items: stretch; }
-.wird-app .wk .chip { border-top-right-radius: 0; border-bottom-right-radius: 0; text-decoration: none; display: inline-flex; align-items: center; }
-.wird-app .wk .x { appearance: none; font: inherit; min-width: 36px; border: 1px solid var(--line); border-left: 0; border-radius: 0 12px 12px 0; background: var(--surface); color: var(--muted); cursor: pointer; }
-.wird-app .quick .chip { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
-@media (prefers-reduced-motion: reduce) { .wird-app *, .wird-app *::before { transition: none !important; animation: none !important; } }
-.wird-app .dots.big i, .wird-app .dots i { font-style: normal; }
-.wird-app .panel .row { flex-wrap: wrap; }
-.wird-app .panel .row select { flex: 1 1 140px; }
-
-/* next prayer strip and reminder settings */
-.wird-app .nextup { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 14px; padding: 10px 14px; margin: 0 0 14px; }
+/* next prayer */
+.wird-app .nextup { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); border-radius: var(--r); padding: 12px 16px; margin-top: 14px; box-shadow: var(--shadow); }
 .wird-app .nextup strong { display: block; }
 .wird-app .nextup span { font-size: 0.86rem; color: var(--muted); }
-.wird-app .nextup b { flex: none; font-weight: 600; color: var(--accent); white-space: nowrap; }
-.wird-app .nextup.due { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 1px var(--accent) inset; }
+.wird-app .nextup b { flex: none; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.wird-app .nextup.due { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
 .wird-app .nextup.idle { display: block; }
-.wird-app .badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; color: var(--done-ink); background: var(--done); vertical-align: middle; }
+
+/* welcome */
+.wird-app .welcome { text-align: center; padding: 8px 0; }
+.wird-app .wring { position: relative; width: 120px; height: 120px; margin: 8px auto 12px; display: grid; place-items: center; }
+.wird-app .wring .ring { position: absolute; inset: 0; }
+.wird-app .wring .ring .rp { stroke: var(--accent); }
+.wird-app .wring .ar { position: relative; font-size: 2rem; }
+.wird-app .welcome h2 { font-size: 1.5rem; margin-bottom: 6px; }
+.wird-app .welcome > p { color: var(--muted); }
+.wird-app .choices { display: grid; gap: 10px; margin-top: 18px; text-align: left; }
+.wird-app .choice { appearance: none; display: flex; align-items: center; gap: 14px; font: inherit; color: var(--ink); background: var(--surface); border: 0; border-radius: var(--r); padding: 16px; box-shadow: var(--shadow); cursor: pointer; }
+.wird-app .choice strong { display: block; font-size: 1.05rem; }
+.wird-app .choice small { color: var(--muted); font-size: 0.88rem; }
+.wird-app .cicon { flex: none; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; background: var(--done); color: var(--done-ink); }
+
+/* reading screen */
+.wird-app .rsub { text-align: center; color: var(--muted); font-size: 0.9rem; margin: 0 0 6px; }
+.wird-app .dial { display: grid; grid-template-columns: 60px 1fr 60px; align-items: center; gap: 4px; }
+.wird-app .step { appearance: none; width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink); font-size: 1.9rem; line-height: 1; box-shadow: var(--shadow); cursor: pointer; }
+.wird-app #next { background: var(--done); color: var(--done-ink); }
+.wird-app .step:active { transform: scale(.94); }
+.wird-app .medal { position: relative; width: 210px; height: 210px; max-width: 100%; margin: 0 auto; }
+.wird-app .medal .ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wird-app .mnum { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.wird-app .mnum small { font-size: 0.78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.wird-app .medal input[type=number] { width: 140px; text-align: center; font: inherit; font-size: 3.8rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; color: var(--ink); background: transparent; border: 0; padding: 0; -moz-appearance: textfield; appearance: textfield; }
+.wird-app .medal input::-webkit-inner-spin-button, .wird-app .medal input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.wird-app .where { text-align: center; font-weight: 700; font-size: 1.08rem; margin: 8px 0 2px; }
+.wird-app .sub { text-align: center; color: var(--muted); font-size: 0.88rem; }
+.wird-app .quick { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
+.wird-app .quick .chip { min-width: 62px; font-weight: 700; }
+.wird-app .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+.wird-app .act { appearance: none; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--ink); background: var(--surface); border: 0; border-radius: 16px; padding: 12px 6px; box-shadow: var(--shadow); text-decoration: none; cursor: pointer; }
+.wird-app .act.on { background: var(--warn); color: var(--surface); }
+.wird-app .sit { margin-top: 18px; }
+.wird-app .sit .hint { margin-top: 10px; }
+.wird-app .dots { display: flex; gap: 5px; margin-top: 8px; }
+.wird-app .dots i { width: 24px; height: 6px; border-radius: 3px; background: var(--line); font-style: normal; }
+.wird-app .dots i.on { background: var(--accent); }
+.wird-app .dots.big { justify-content: center; gap: 10px; margin-top: 0; }
+.wird-app .dots.big i { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); }
+.wird-app .dots.big i b { font-weight: 700; color: var(--muted); }
+.wird-app .dots.big i.on { background: var(--accent); }
+.wird-app .dots.big i.on b { color: var(--surface); }
+.wird-app .group { margin-bottom: 10px; }
+.wird-app .group p { margin: 0 0 6px; font-weight: 600; }
+
+/* progress */
+.wird-app .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wird-app .stats > div { background: var(--surface); border-radius: var(--r); padding: 14px 16px; box-shadow: var(--shadow); }
+.wird-app .stats strong { display: block; font-size: 1.7rem; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; }
+.wird-app .stats strong small { font-size: 1rem; color: var(--muted); font-weight: 600; }
+.wird-app .stats span { font-size: 0.84rem; color: var(--muted); }
+.wird-app .bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+.wird-app .bcol { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wird-app .btrack { position: relative; width: 100%; height: 90px; background: var(--bg); border-radius: 10px; overflow: hidden; }
+.wird-app .btrack i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--done); border-radius: 10px; }
+.wird-app .btrack b { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--accent); }
+.wird-app .bcol span { font-size: 0.74rem; color: var(--muted); }
+.wird-app .bcol em { font-style: normal; font-size: 0.74rem; font-weight: 700; min-height: 1.1em; }
+.wird-app .heat { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.wird-app .heat b { text-align: center; font-size: 0.72rem; font-weight: 600; color: var(--muted); }
+.wird-app .heat i { aspect-ratio: 1; border-radius: 8px; background: var(--bg); }
+.wird-app .heat i.l1 { background: var(--done); opacity: .5; }
+.wird-app .heat i.l2 { background: var(--done); }
+.wird-app .heat i.now { box-shadow: 0 0 0 2px var(--accent); }
+.wird-app .juzmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.wird-app .jz { appearance: none; font: inherit; font-size: 0.86rem; font-weight: 700; height: 44px; padding: 0; border-radius: 12px; border: 0; background: var(--bg); color: var(--muted); cursor: pointer; }
+.wird-app .jz.done { background: var(--done); color: var(--done-ink); }
+.wird-app .jz.here { background: var(--accent); color: var(--surface); }
+.wird-app .jz.out { background: transparent; box-shadow: inset 0 0 0 1px var(--line); opacity: .5; cursor: default; }
+
+/* settings */
+.wird-app .rows { display: grid; }
+.wird-app .row-link { appearance: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; font: inherit; text-align: left; color: var(--ink); text-decoration: none; background: transparent; border: 0; border-top: 1px solid var(--line); padding: 12px 2px; min-height: 56px; cursor: pointer; }
+.wird-app .row-link:first-child { border-top: 0; }
+.wird-app .row-link strong { display: block; }
+.wird-app .row-link small { color: var(--muted); }
+.wird-app .row-link svg { color: var(--muted); flex: none; }
+.wird-app .row-link.add { justify-content: flex-start; color: var(--done); font-weight: 600; }
+.wird-app .row-link.add svg { color: var(--done); }
+.wird-app .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.wird-app .sw { appearance: none; display: flex; flex-direction: column; align-items: center; gap: 6px; font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--ink); background: var(--bg); border: 0; border-radius: 16px; padding: 10px 4px; cursor: pointer; }
+.wird-app .sw.on { box-shadow: 0 0 0 2px var(--ink) inset; }
+.wird-app .dot2 { display: flex; }
+.wird-app .dot2 i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--bg); margin-left: -6px; }
+.wird-app .dot2 i:first-child { margin-left: 0; }
+.wird-app .fold { padding: 0; }
+.wird-app .fold > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 56px; padding: 0 16px; cursor: pointer; }
+.wird-app .fold > summary::-webkit-details-marker { display: none; }
+.wird-app .fold > summary::after { content: ""; width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin: -4px 4px 0 auto; transition: transform .2s; }
+.wird-app .fold[open] > summary::after { transform: rotate(-135deg); margin-top: 4px; }
+.wird-app .fold > summary h2 { flex: none; }
+.wird-app .fold > :not(summary) { margin-left: 16px; margin-right: 16px; }
+.wird-app .fold[open] { padding-bottom: 16px; }
+.wird-app .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; color: var(--done-ink); background: var(--done); }
 .wird-app .times { display: grid; grid-template-columns: 90px 1fr; gap: 8px 12px; align-items: center; margin-top: 12px; }
-.wird-app .times label { font-weight: 500; }
+.wird-app .times label { font-weight: 600; }
 .wird-app .wrapbtn { flex-wrap: wrap; }
-.wird-app .okmark { color: var(--done); font-weight: 600; font-size: 0.9rem; }
+.wird-app .okmark { color: var(--done); font-weight: 700; font-size: 0.9rem; }
+.wird-app .foot { color: var(--muted); font-size: 0.78rem; text-align: center; margin-top: 24px; }
+
+/* forms */
+.wird-app .lbl { display: block; margin: 22px 0 8px; font-weight: 700; font-size: 0.95rem; }
+.wird-app .hint { color: var(--muted); font-size: 0.86rem; margin: 8px 0 0; }
+.wird-app .hint.strong { color: var(--ink); font-weight: 600; }
+.wird-app .types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.wird-app .tcard { appearance: none; display: flex; flex-direction: column; align-items: center; gap: 8px; font: inherit; font-weight: 600; font-size: 0.88rem; color: var(--ink); background: var(--surface); border: 0; border-radius: 18px; padding: 16px 6px; box-shadow: var(--shadow); cursor: pointer; }
+.wird-app .tcard svg { width: 26px; height: 26px; color: var(--done); }
+.wird-app .tcard.on { background: var(--done); color: var(--done-ink); }
+.wird-app .tcard.on svg { color: var(--done-ink); }
+.wird-app .jgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 12px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.wird-app .jt { appearance: none; aspect-ratio: 1; font: inherit; font-weight: 700; font-size: 1.05rem; border-radius: 16px; border: 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); cursor: pointer; transition: background .12s, transform .12s; }
+.wird-app .jt.on { background: var(--done); color: var(--done-ink); }
+.wird-app .jt.live { transform: scale(.94); }
+.wird-app .slist { max-height: 340px; overflow-y: auto; margin-top: 10px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+.wird-app .srow { appearance: none; display: flex; align-items: center; gap: 12px; width: 100%; font: inherit; text-align: left; color: var(--ink); background: transparent; border: 0; border-top: 1px solid var(--line); padding: 10px 14px; min-height: 56px; cursor: pointer; }
+.wird-app .srow:first-child { border-top: 0; }
+.wird-app .sn { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); font-size: 0.84rem; font-weight: 700; color: var(--muted); }
+.wird-app .st { flex: 1; font-weight: 600; }
+.wird-app .st small { display: block; font-weight: 400; font-size: 0.8rem; color: var(--muted); }
+.wird-app .sc { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 2px var(--line); color: var(--done-ink); }
+.wird-app .sc svg { width: 16px; height: 16px; }
+.wird-app .srow.on .sn { background: var(--done); color: var(--done-ink); }
+.wird-app .srow.on .sc { background: var(--done); box-shadow: none; }
+.wird-app .picked { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.wird-app .pk { display: inline-flex; align-items: center; gap: 2px; font-size: 0.9rem; font-weight: 600; padding: 4px 4px 4px 12px; border-radius: 999px; background: var(--done); color: var(--done-ink); }
+.wird-app .pk .x { appearance: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: transparent; color: inherit; font-size: 1.1rem; line-height: 1; cursor: pointer; }
+.wird-app .linkbtn { appearance: none; font: inherit; font-size: 0.88rem; font-weight: 600; color: var(--muted); background: none; border: 0; padding: 8px; text-decoration: underline; cursor: pointer; }
+.wird-app .count { margin-top: 12px; font-size: 0.92rem; }
+.wird-app .count span { color: var(--muted); margin-left: 8px; }
+.wird-app .more { margin-top: 20px; background: var(--surface); border-radius: 18px; padding: 0 16px; box-shadow: var(--shadow); }
+.wird-app .more > summary { min-height: 52px; display: flex; align-items: center; font-weight: 700; cursor: pointer; }
+.wird-app .more[open] { padding-bottom: 16px; }
+.wird-app .more .lbl:first-of-type { margin-top: 4px; }
+.wird-app .savebar { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); margin-top: 22px; z-index: 5; }
+.wird-app .savebar .btn { box-shadow: 0 10px 24px rgba(0,0,0,.18); }
+
+/* controls */
+.wird-app .btn { appearance: none; font: inherit; font-weight: 600; color: var(--ink); background: var(--surface); border: 0; border-radius: 14px; padding: 10px 16px; cursor: pointer; min-height: 46px; box-shadow: var(--shadow); }
+.wird-app .btn.primary { background: var(--ink); color: var(--bg); }
+.wird-app .btn.danger { color: var(--warn); background: transparent; box-shadow: inset 0 0 0 1.5px var(--warn); margin-top: 12px; }
+.wird-app .btn.wide { width: 100%; min-height: 54px; font-size: 1.02rem; }
+.wird-app .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.wird-app .chip { appearance: none; font: inherit; font-size: 0.93rem; font-weight: 600; min-width: 44px; min-height: 42px; padding: 6px 14px; border-radius: 14px; border: 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+.wird-app .chip.on { background: var(--done); color: var(--done-ink); }
+.wird-app .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; border-radius: 16px; background: var(--line); }
+.wird-app .seg .chip { width: 100%; box-shadow: none; background: transparent; }
+.wird-app .seg .chip.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.wird-app .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.wird-app .row > * { flex: 1; min-width: 0; }
+.wird-app .row .btn { flex: none; }
 .wird-app .row .muted { flex: 1 1 auto; }
-.wird-app .row input[type=number] { max-width: 96px; flex: none; }
+.wird-app .row input[type=number] { max-width: 110px; flex: none; }
+.wird-app .ayin { max-width: 92px; }
+.wird-app input[type=text], .wird-app input[type=url], .wird-app input[type=search], .wird-app input[type=time], .wird-app input[type=number]:not(#pg), .wird-app select, .wird-app textarea { width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 0; box-shadow: inset 0 0 0 1.5px var(--line); border-radius: 14px; padding: 12px 14px; }
+.wird-app input[type=search] { margin-top: 12px; }
+.wird-app textarea { min-height: 90px; margin-top: 8px; font-size: 13px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.wird-app .wk { display: inline-flex; align-items: stretch; }
+.wird-app .wk .chip { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.wird-app .wk .x { appearance: none; font: inherit; min-width: 38px; border: 0; border-radius: 0 14px 14px 0; background: var(--bg); color: var(--muted); cursor: pointer; }
+.wird-app .msg { font-size: 0.88rem; margin: 8px 0 0; min-height: 1.2em; }
+.wird-app .msg.err { color: var(--warn); }
+.wird-app .msg.ok { color: var(--done); }
+.wird-app .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom, 0px)); z-index: 40; display: flex; align-items: center; gap: 14px; background: var(--ink); color: var(--bg); border-radius: 16px; padding: 10px 12px 10px 16px; font-size: 0.92rem; box-shadow: 0 10px 30px rgba(0,0,0,.25); width: max-content; max-width: calc(100% - 32px); }
+.wird-app .toast button { appearance: none; font: inherit; font-weight: 700; color: var(--bg); background: transparent; border: 1.5px solid currentColor; border-radius: 10px; padding: 6px 12px; cursor: pointer; }
+.wird-app button:focus-visible, .wird-app input:focus-visible, .wird-app select:focus-visible, .wird-app textarea:focus-visible, .wird-app summary:focus-visible, .wird-app a:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+
+/* bottom tabs */
+.wird-app .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(3, 1fr); max-width: 520px; margin: 0 auto; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--surface); box-shadow: 0 -1px 0 var(--line), 0 -8px 24px rgba(0,0,0,.05); }
+.wird-app .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; min-height: 52px; border-radius: 14px; color: var(--muted); text-decoration: none; font-size: 0.76rem; font-weight: 600; }
+.wird-app .tab.on { color: var(--done); }
+.wird-app .tab.on svg { stroke-width: 2.4; }
+
+@media (prefers-reduced-motion: reduce) { .wird-app *, .wird-app *::before { transition: none !important; animation: none !important; } }

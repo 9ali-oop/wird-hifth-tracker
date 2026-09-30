@@ -2,6 +2,7 @@
 import {
   MAX_WIRDS, PAGES, ayatCount, ayatOnPage, cleanState, cleanWird, compress, dateAgo, dayKey, daysAgo, juzOf, juzPages,
   mergeStates, paceDays, pageOf, parseRanges, rangeText, selPages, sittingsDone, stableKey, surahName as nm, targetForDays,
+  describeSel, emptySel,
 } from "./core";
 import { DEFAULT_THEME, PAL, themeCss } from "./themes";
 import {
@@ -17,13 +18,12 @@ const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev
 const ICAL_KEY = "wird-ical-url"; // the calendar link is a secret, so it stays on this device and is never synced
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const shortDate = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-const RING_C = 2 * Math.PI * 46;
 const WEEKDAY_MON0 = d => (d.getDay() + 6) % 7;
 
 // ---------- app ----------
 export function createWirdApp(root, opts = {}) {
   const $ = id => root.querySelector("#" + id);
-  const TYPES = { khatmah: { label: "Khatmah", round: "Khatmah", name: "Khatmah" }, hifz: { label: "Hifz cycle", round: "Cycle", name: "Hifz cycle" }, custom: { label: "Custom", round: "Round", name: "Wird" } };
+  const TYPES = { khatmah: { label: "Khatmah", round: "Khatmah", name: "Khatmah" }, hifz: { label: "Hifz revision", round: "Cycle", name: "Hifz revision" }, custom: { label: "Other", round: "Round", name: "My wird" } };
   let state;
   try { state = cleanState(JSON.parse(localStorage.getItem(KEY))); } catch (e) { state = cleanState(null); }
 
@@ -98,7 +98,7 @@ export function createWirdApp(root, opts = {}) {
     try { const s2 = await notifier.status(); if (s2 !== notif) { notif = s2; changed = true; } } catch (e) {}
     if (notifier.exact) { try { const e2 = await notifier.exact.status(); if (e2 !== exact) { exact = e2; changed = true; } } catch (e) {} }
     scheduleNotifications();
-    if (changed && current === "home") { const y = window.scrollY; home(); window.scrollTo(0, y); }
+    if (changed && (current === "home" || current === "settings")) rerenderInPlace();
   }
   let calBusy = false;
   async function syncCalendar(manual) {
@@ -112,7 +112,7 @@ export function createWirdApp(root, opts = {}) {
       const parsed = parseIcs(r.ics), days = timetableFromEvents(parsed.events, parsed.tz), n = Object.keys(days).length;
       if (!n) { if (manual) msg("pstat", "No prayer times found in that calendar. Events should be named Fajr, Dhuhr, Asr, Maghrib and Isha.", 0); return false; }
       setPrayer({ days: Object.assign({}, state.prayer.days, days), syncedAt: Date.now() });
-      if (current === "home") { const y = window.scrollY; home("fold-prayer"); window.scrollTo(0, y); msg("pstat", "Read " + n + (n === 1 ? " day" : " days") + " of prayer times.", 1); }
+      if (current === "settings") { const y = window.scrollY; settings("fold-prayer"); window.scrollTo(0, y); msg("pstat", "Read " + n + (n === 1 ? " day" : " days") + " of prayer times.", 1); }
       return true;
     } catch (e) { if (manual) msg("pstat", "Could not read the calendar. Try again in a moment.", 0); return false; }
     finally { calBusy = false; }
@@ -124,7 +124,7 @@ export function createWirdApp(root, opts = {}) {
     const P = state.prayer;
     if (!P.prayers.length) return "";
     const n = nextUp(P, Date.now());
-    if (!n) return '<div class="nextup idle"><span>Reminders are on, but there are no prayer times yet. Open Prayer reminders to add them.</span></div>';
+    if (!n) return '<div class="nextup idle"><span>Reminders are on, but there are no prayer times yet. Add them in Settings.</span></div>';
     const w = reminderWird(), left = n.at - Date.now();
     const timing = P.offset === 0 ? "at jamat" : P.offset + " min " + (P.dir === -1 ? "before" : "after");
     return '<div class="nextup' + (n.due ? " due" : "") + '"><div><strong>' + PRAYER_LABEL[n.prayer] + " jamat " + fmtTime(n.jamat) + "</strong><span>" +
@@ -132,7 +132,7 @@ export function createWirdApp(root, opts = {}) {
   }
   function prayerFold() {
     const P = state.prayer, ns = notif, cal = P.mode === "calendar";
-    let h = '<details class="fold" id="fold-prayer"><summary>Prayer reminders' + (P.prayers.length ? ' <span class="badge">On</span>' : "") + '</summary><p class="muted small">A nudge to read a few pages before (or after) the congregation prayer, at whatever timing suits you.</p>';
+    let h = '<details class="card fold" id="fold-prayer"><summary><h2>Prayer reminders</h2>' + (P.prayers.length ? '<span class="badge">On</span>' : '<span class="muted small">Off</span>') + '</summary><p class="muted small">A nudge to read a few pages before (or after) the congregation prayer, at whatever timing suits you.</p>';
     h += '<p class="lbl">Remind me for</p><div class="chips">' + PRAYERS.map(p => '<button class="chip' + (P.prayers.includes(p) ? " on" : "") + '" data-pray="' + p + '" aria-pressed="' + P.prayers.includes(p) + '">' + PRAYER_LABEL[p] + "</button>").join("") + "</div>";
     h += '<p class="lbl">When</p><div class="seg"><button class="chip' + (P.dir === -1 ? " on" : "") + '" data-pdir="-1" aria-pressed="' + (P.dir === -1) + '">Before jamat</button><button class="chip' + (P.dir === 1 ? " on" : "") + '" data-pdir="1" aria-pressed="' + (P.dir === 1) + '">After jamat</button></div>';
     h += '<div class="chips" style="margin-top:8px">' + [0, 15, 30, 45, 60].map(n => '<button class="chip' + (P.offset === n ? " on" : "") + '" data-poff="' + n + '">' + (n === 0 ? "At jamat" : n + " min") + "</button>").join("") + '</div><div class="row"><input type="number" id="poff" inputmode="numeric" min="0" max="' + MAX_OFFSET + '" value="' + P.offset + '" aria-label="Minutes from jamat"><span class="muted small">minutes, or type your own</span></div>';
@@ -162,7 +162,7 @@ export function createWirdApp(root, opts = {}) {
     return h;
   }
   function bindPrayer() {
-    const open = () => { const y = window.scrollY; home("fold-prayer"); window.scrollTo(0, y); };
+    const open = () => { const y = window.scrollY; settings("fold-prayer"); window.scrollTo(0, y); };
     const P = () => state.prayer;
     root.querySelectorAll("[data-pray]").forEach(b => b.onclick = () => { const p = b.dataset.pray, cur = P().prayers; setPrayer({ prayers: cur.includes(p) ? cur.filter(x => x !== p) : [...cur, p] }); open(); });
     root.querySelectorAll("[data-pdir]").forEach(b => b.onclick = () => { setPrayer({ dir: +b.dataset.pdir }); open(); });
@@ -210,47 +210,59 @@ export function createWirdApp(root, opts = {}) {
   if (mq) (mq.addEventListener ? mq.addEventListener("change", applyTheme) : mq.addListener(applyTheme));
 
   // ---------- pieces ----------
-  // Eight-point star with a progress ring around it.
-  const SEAL = (size, cls, frac, met) =>
-    '<svg class="' + cls + '" viewBox="0 0 100 100" width="' + size + '" height="' + size + '" aria-hidden="true">' +
-    '<circle class="rbg" cx="50" cy="50" r="46"/><circle class="rfg' + (met ? " met" : "") + '" cx="50" cy="50" r="46" stroke-dasharray="' + (Math.max(0, Math.min(1, frac)) * RING_C).toFixed(1) + " " + RING_C.toFixed(1) + '" transform="rotate(-90 50 50)"/>' +
-    '<rect x="21" y="21" width="58" height="58" rx="3"/><rect x="21" y="21" width="58" height="58" rx="3" transform="rotate(45 50 50)"/><circle cx="50" cy="50" r="25"/></svg>';
-  const STAR = (size, cls) =>
-    '<svg class="' + cls + '" viewBox="0 0 100 100" width="' + size + '" height="' + size + '" aria-hidden="true"><rect x="19" y="19" width="62" height="62" rx="3"/><rect x="19" y="19" width="62" height="62" rx="3" transform="rotate(45 50 50)"/><circle cx="50" cy="50" r="27"/></svg>';
+  const I = (d, sw = 1.9) => '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="' + d + '" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const ICON = {
-    back: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    edit: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
-    ext: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    flag: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6 21V4M6 5h11l-2 4 2 4H6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    share: '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    back: I("M15 5l-7 7 7 7", 2.2),
+    edit: I("M4 20h4L19 9l-4-4L4 16v4z"),
+    ext: I("M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"),
+    flag: I("M6 21V4M6 5h11l-2 4 2 4H6"),
+    share: I("M12 15V4M8 8l4-4 4 4M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6"),
+    today: I("M12 3.5 3.5 10.5V20h6v-6h5v6h6v-9.5z"),
+    stats: I("M5 20V11M12 20V5M19 20v-6"),
+    gear: I("M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM19.4 13.5l1.6 1.2-2 3.4-1.9-.8a7 7 0 0 1-2 1.2l-.3 2h-4l-.3-2a7 7 0 0 1-2-1.2l-1.9.8-2-3.4 1.6-1.2a7 7 0 0 1 0-3l-1.6-1.2 2-3.4 1.9.8a7 7 0 0 1 2-1.2l.3-2h4l.3 2a7 7 0 0 1 2 1.2l1.9-.8 2 3.4-1.6 1.2a7 7 0 0 1 0 3z", 1.6),
+    flame: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 22c4 0 7-2.8 7-6.8 0-3.4-2.2-5.6-3.6-7.4-.4 1.8-1.4 3-2.6 3.6.4-3.4-1-6.6-4.2-8.4.4 3-1 5.2-2.6 7.2C4.6 12.1 5 13.4 5 15.2 5 19.2 8 22 12 22z" fill="currentColor"/></svg>',
+    plus: I("M12 5v14M5 12h14", 2.2),
+    check: I("M5 12.5l4.5 4.5L19 7.5", 2.4),
+    book: I("M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"),
+    loop: I("M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"),
+    list: I("M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01", 2.2),
   };
+  const RC = r => 2 * Math.PI * r;
+  const ring = (size, frac, cls) => {
+    const r = 44, c = RC(r), f = Math.max(0, Math.min(1, frac));
+    return '<svg class="ring ' + (cls || "") + '" viewBox="0 0 100 100" width="' + size + '" height="' + size + '" aria-hidden="true"><circle class="rt" cx="50" cy="50" r="' + r + '"/>' +
+      (f > 0 ? '<circle class="rp" cx="50" cy="50" r="' + r + '" stroke-dasharray="' + (f * c).toFixed(1) + " " + c.toFixed(1) + '" transform="rotate(-90 50 50)"/>' : "") + "</svg>";
+  };
+  const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+  function nav(tab) {
+    const item = (k, href, icon, label) => '<a class="tab' + (tab === k ? " on" : "") + '" href="#' + href + '"' + (tab === k ? ' aria-current="page"' : "") + ">" + icon + "<span>" + label + "</span></a>";
+    return '<nav class="tabs" aria-label="Main">' + item("today", "", ICON.today, "Today") + item("progress", "progress", ICON.stats, "Progress") + item("settings", "settings", ICON.gear, "Settings") + "</nav>";
+  }
   function bars(w) {
     let h = '<div class="bars" role="img" aria-label="Pages over the last 7 days">', max = Math.max(1, w.target || 0, ...[0, 1, 2, 3, 4, 5, 6].map(i => w.log[daysAgo(i)] || 0));
     for (let i = 6; i >= 0; i--) {
       const n = w.log[daysAgo(i)] || 0;
-      h += '<div class="bcol"><div class="btrack"><i style="height:' + Math.round(n / max * 100) + '%"></i>' + (w.target ? '<b style="bottom:' + Math.round(w.target / max * 100) + '%"></b>' : "") + '</div><span>' + (i === 0 ? "Today" : dateAgo(i).toLocaleDateString("en-GB", { weekday: "narrow" })) + "</span><em>" + (n || "") + "</em></div>";
+      h += '<div class="bcol"><em>' + (n || "") + '</em><div class="btrack"><i style="height:' + Math.round(n / max * 100) + '%"></i>' + (w.target ? '<b style="bottom:' + Math.round(w.target / max * 100) + '%"></b>' : "") + '</div><span>' + (i === 0 ? "Today" : dateAgo(i).toLocaleDateString("en-GB", { weekday: "short" }).slice(0, 2)) + "</span></div>";
     }
     return h + "</div>";
   }
-  // Last four weeks plus this week so far, columns Monday to Sunday.
   function heat(w) {
     const wd = WEEKDAY_MON0(dateAgo(0)), span = 28 + wd, total = span + 1;
     let h = '<div class="heat" role="img" aria-label="Days you read over the last five weeks">' + ["M", "T", "W", "T", "F", "S", "S"].map(x => "<b>" + x + "</b>").join(""), read = 0;
     for (let i = span; i >= 0; i--) {
       const n = w.log[daysAgo(i)] || 0, lvl = n <= 0 ? 0 : w.target && n >= w.target ? 2 : 1;
       if (n > 0) read++;
-      h += '<i class="l' + lvl + (i === 0 ? " now" : "") + '" title="' + esc(shortDate(dateAgo(i)) + ": " + n + (n === 1 ? " page" : " pages")) + '"></i>';
+      h += '<i class="l' + lvl + (i === 0 ? " now" : "") + '" title="' + esc(shortDate(dateAgo(i)) + ": " + plural(n, "page", "pages")) + '"></i>';
     }
     return { html: h + "</div>", read, total };
   }
-  // 30 small cells, one per juz: done, here, still to come, or not part of this wird.
   function juzMap(w, list, i) {
     let h = '<div class="juzmap" role="group" aria-label="Juz map">';
     for (let j = 1; j <= 30; j++) {
       const idx = juzPages(j).map(p => list.indexOf(p)).filter(x => x >= 0);
-      const state_ = !idx.length ? "out" : idx.includes(i) ? "here" : Math.max(...idx) < i ? "done" : "todo";
+      const st = !idx.length ? "out" : idx.includes(i) ? "here" : Math.max(...idx) < i ? "done" : "todo";
       const target = idx.length ? list[Math.min(...idx)] : 0;
-      h += '<button class="jz ' + state_ + '" data-jz="' + target + '" ' + (idx.length ? "" : "disabled ") + 'aria-label="Juz ' + j + (state_ === "here" ? ", you are here" : state_ === "done" ? ", finished" : state_ === "todo" ? ", still to come" : ", not in this wird") + '"><span>' + j + "</span></button>";
+      h += '<button class="jz ' + st + '" data-jz="' + target + '" ' + (idx.length ? "" : "disabled ") + 'aria-label="Juz ' + j + (st === "here" ? ", you are here" : st === "done" ? ", finished" : st === "todo" ? ", still to come" : ", not in this wird") + '">' + j + "</button>";
     }
     return h + "</div>";
   }
@@ -262,67 +274,131 @@ export function createWirdApp(root, opts = {}) {
     if (undo) t.querySelector("button").onclick = () => { undo(); t.remove(); };
     setTimeout(() => t.remove(), 5000);
   }
-  // Re-render without dropping keyboard focus.
   function focusSel() {
     const a = document.activeElement;
     if (!a || !root.contains(a) || a === document.body) return null;
     if (a.id) return "#" + a.id;
-    for (const k of ["q", "s", "item", "pal", "mode", "type", "by", "dir", "tg", "days", "parts", "open", "new", "jz", "unweak", "pray", "pdir", "poff", "ppages", "pmode"]) {
+    for (const k of ["q", "s", "surah", "juz", "pal", "mode", "type", "tab", "dir", "tg", "days", "parts", "open", "new", "jz", "unweak", "pray", "pdir", "poff", "ppages", "pmode", "focus", "run"]) {
       if (a.dataset && a.dataset[k] !== undefined) return "[data-" + k + '="' + a.dataset[k] + '"]' + (k === "s" ? '[data-a="' + a.dataset.a + '"]' : "");
     }
     return null;
   }
-  function paint(html) {
+  function paint(html, tab) {
     const sel = focusSel(), openIds = [...root.querySelectorAll("details[open]")].map(d => d.id).filter(Boolean);
-    root.innerHTML = '<div class="wrap">' + html + "</div>";
+    root.innerHTML = '<div class="wrap' + (tab ? " has-tabs" : "") + '">' + html + "</div>" + (tab ? nav(tab) : "");
     openIds.forEach(id => { const d = root.querySelector("#" + id); if (d) d.open = true; });
     if (sel) { const el = root.querySelector(sel); if (el && el.focus) try { el.focus({ preventScroll: true }); } catch (e) {} }
   }
+  function msg(id, t, ok) { const e = $(id); if (e) { e.textContent = t; e.className = "msg " + (ok ? "ok" : "err"); } }
 
-  // ---------- home ----------
-  function home(openFold) {
-    const today = new Date(), total = state.wirds.reduce((s, w) => s + todayN(w), 0), st = streak(state.wirds.map(w => w.log));
-    let h = '<header class="top"><div class="brand"><span class="wm">Wird</span><span class="ar" lang="ar">وِرد</span></div><div class="acct-slot"></div></header>' +
-      '<p class="date">' + today.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }) + "</p>";
-    if (state.wirds.length) {
-      let week = '<div class="week" aria-label="This week">';
-      for (let i = 6; i >= 0; i--) { const on = state.wirds.some(w => (w.log[daysAgo(i)] || 0) > 0); week += '<span class="' + (on ? "on" : "") + (i === 0 ? " now" : "") + '"><i></i>' + (i === 0 ? "Today" : dateAgo(i).toLocaleDateString("en-GB", { weekday: "narrow" })) + "</span>"; }
-      h += '<div class="summary"><div><strong>' + total + '</strong><span>' + (total === 1 ? "page" : "pages") + ' today</span></div><div><strong>' + st + '</strong><span>day streak</span></div><div><strong>' + state.wirds.length + '</strong><span>' + (state.wirds.length === 1 ? "wird" : "wirds") + "</span></div>" + week + "</div></div>" + nextUpHtml();
+  // The wird shown on Today and Progress. Remembered per device.
+  const FOCUS_KEY = "wird-focus";
+  const focusW = () => { let id = ""; try { id = localStorage.getItem(FOCUS_KEY) || ""; } catch (e) {} return find(id) || state.wirds[0] || null; };
+  const setFocus = id => { try { localStorage.setItem(FOCUS_KEY, id); } catch (e) {} };
+  function switcher(w) {
+    if (state.wirds.length < 2) return "";
+    return '<div class="switch" role="tablist" aria-label="Your wirds">' + state.wirds.map(x => '<button role="tab" class="sp' + (x === w ? " on" : "") + '" data-focus="' + esc(x.id) + '" aria-selected="' + (x === w) + '">' + esc(x.name) + "</button>").join("") + "</div>";
+  }
+  function bindSwitch(render) { root.querySelectorAll("[data-focus]").forEach(b => b.onclick = () => { setFocus(b.dataset.focus); render(); }); }
+  function finishText(w, left) {
+    if (!w.target) return "";
+    const d = new Date(); d.setDate(d.getDate() + Math.ceil(left / w.target));
+    return shortDate(d);
+  }
+
+  // ---------- today ----------
+  function home() {
+    const w = focusW(), st = streak(state.wirds.map(x => x.log));
+    const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+    let h = '<header class="top"><div><p class="eyebrow">' + today + '</p><h1 class="title">Today <span class="ar" lang="ar">وِرد</span></h1></div>' +
+      (state.wirds.length ? '<div class="streak' + (st ? " on" : "") + '" aria-label="' + plural(st, "day", "days") + ' streak">' + ICON.flame + "<b>" + st + "</b></div>" : "") + "</header>";
+    if (!w) {
+      h += '<section class="welcome"><div class="wring">' + ring(120, 0.72, "big") + '<span class="ar" lang="ar">وِرد</span></div><h2>Keep your place in every wird</h2><p>Track your page, the ayah you stopped at, and a gentle daily goal.</p>' +
+        '<div class="choices">' + typeCard("khatmah", ICON.book, "Khatmah", "Read the whole Qur'an, cover to cover") + typeCard("hifz", ICON.loop, "Hifz revision", "Cycle through what you've memorised") + typeCard("custom", ICON.list, "Something else", "Any juz, surahs or pages") + "</div></section>";
+      paint(h, "today"); bindHome(null); return;
     }
-    if (!state.wirds.length) {
-      h += '<div class="welcome">' + STAR(64, "orn") + '<h2>Keep your place in every wird</h2><p>The page you\'re on in the Madani mushaf and the ayah you stopped at, one tap away. What would you like to track first?</p>' +
-        '<div class="choices"><button class="choice" data-new="khatmah"><strong>Khatmah</strong><span>Read the whole Qur\'an, cover to cover</span></button><button class="choice" data-new="hifz"><strong>Hifz cycle</strong><span>Revise what you\'ve memorised</span></button><button class="choice" data-new="custom"><strong>Custom</strong><span>Any set of pages</span></button></div></div>';
+    const { list, i } = posOf(w), tn = todayN(w), goal = w.target || 0, met = goal && tn >= goal, left = list.length - i;
+    const sit = goal && w.parts > 1 ? sittingsDone(goal, w.parts, tn) : -1;
+    h += switcher(w);
+    h += '<section class="hero' + (met ? " met" : "") + '"><div class="hero-top"><span class="hname">' + esc(w.name) + '</span><span class="hpill">' + esc(w.round) + " " + w.cycle + "</span></div>" +
+      '<div class="hring">' + ring(196, goal ? tn / goal : i / list.length, "hero-ring") + '<div class="hnum"><strong>' + (goal ? tn : w.page) + "</strong><span>" + (goal ? "of " + goal + " pages today" : "page") + "</span>" + (met ? '<em class="done-badge">' + ICON.check + "Done</em>" : "") + "</div></div>" +
+      (sit >= 0 ? '<div class="dots" aria-label="' + sit + " of " + w.parts + ' sittings done">' + Array.from({ length: w.parts }, (_, k) => '<i class="' + (k < sit ? "on" : "") + '"></i>').join("") + "</div>" : "") +
+      '<p class="hpos"><b>Page ' + w.page + "</b> · Juz " + juzOf(w.page) + '</p><p class="hsub">' + esc(posText(w)) + "</p>" +
+      '<div class="hquick" role="group" aria-label="Log pages read">' + [1, 2, 5, 10].map(n => '<button class="qb" data-q="' + n + '" aria-label="Log ' + plural(n, "page", "pages") + '">+' + n + "</button>").join("") + "</div>" +
+      '<button class="cta" data-open="' + esc(w.id) + '">Open page ' + w.page + "</button></section>";
+    h += nextUpHtml();
+    let week = "", days = 0;
+    for (let d = 6; d >= 0; d--) {
+      const on = state.wirds.some(x => (x.log[daysAgo(d)] || 0) > 0); if (on) days++;
+      week += '<span class="' + (on ? "on" : "") + (d === 0 ? " now" : "") + '"><i>' + (on ? ICON.check : "") + "</i>" + (d === 0 ? "Today" : dateAgo(d).toLocaleDateString("en-GB", { weekday: "short" }).slice(0, 2)) + "</span>";
     }
-    state.wirds.forEach(w => {
-      const { list, i } = posOf(w), pct = Math.round(i / list.length * 100), tn = todayN(w);
-      const goal = w.target ? Math.min(1, tn / w.target) : 0, met = w.target && tn >= w.target;
-      const sit = w.target && w.parts > 1 ? sittingsDone(w.target, w.parts, tn) : -1;
-      h += '<button class="wcard' + (met ? " met" : "") + '" data-open="' + esc(w.id) + '"><div class="pg">' + SEAL(88, "orn", w.target ? goal : i / list.length, met) + '<span>' + w.page + '</span></div><div class="wbody"><div class="wtop"><span class="wname">' + esc(w.name) + '</span><span class="pill">' + esc(w.round) + " " + w.cycle + '</span></div>' +
-        '<div class="wpos">' + esc(posText(w)) + '</div><div class="wmeta">Juz ' + juzOf(w.page) + ", " + pct + "% through" + (w.target ? ", " + tn + "/" + w.target + " today" : tn ? ", " + tn + " today" : "") + (w.weak.length ? ", " + w.weak.length + " weak" : "") + '</div>' +
-        '<div class="track"><i style="width:' + pct + '%"></i></div>' +
-        (sit >= 0 ? '<div class="dots" aria-label="' + sit + " of " + w.parts + ' sittings done">' + Array.from({ length: w.parts }, (_, k) => '<i class="' + (k < sit ? "on" : "") + '"></i>').join("") + "</div>" : "") +
-        "</div></button>";
+    h += '<section class="card"><div class="card-h"><h2>This week</h2><span class="muted">' + days + " of 7 days</span></div><div class=\"week\">" + week + "</div></section>";
+    const pct = Math.round(i / list.length * 100);
+    h += '<section class="card"><div class="card-h"><h2>' + esc(w.round) + " " + w.cycle + '</h2><span class="muted">' + pct + '%</span></div><div class="track"><i style="width:' + pct + '%"></i></div><p class="muted small">' +
+      plural(left, "page", "pages") + " to go" + (goal ? " · finishes around " + finishText(w, left) : "") + "</p></section>";
+    if (state.wirds.length < MAX_WIRDS) h += '<button class="addrow" data-new="">' + ICON.plus + "<span>Add a wird</span></button>";
+    paint(h, "today");
+    bindHome(w);
+  }
+  function typeCard(type, icon, title, sub) { return '<button class="choice" data-new="' + type + '"><span class="cicon">' + icon + "</span><span><strong>" + title + "</strong><small>" + sub + "</small></span></button>"; }
+  function bindHome(w) {
+    if (opts.onHome) opts.onHome(null);
+    root.querySelectorAll("[data-new]").forEach(b => b.onclick = () => go("new" + (b.dataset.new ? "/" + b.dataset.new : "")));
+    if (!w) return;
+    bindSwitch(home);
+    root.querySelectorAll("[data-open]").forEach(b => b.onclick = () => go("w/" + b.dataset.open));
+    root.querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
+      const before = JSON.stringify(w), cyc = w.cycle, moved = step(w, +b.dataset.q); vibrate(); home();
+      const undo = () => { Object.assign(w, JSON.parse(before)); stampDay(w, dayKey()); touchW(w); save(); home(); };
+      if (w.cycle > cyc) toast(w.round + " " + cyc + " complete. Alhamdulillah!", undo); else if (moved) toast("Logged " + plural(moved, "page", "pages") + ". Now on page " + w.page + ".", undo);
     });
-    if (state.wirds.length && state.wirds.length < MAX_WIRDS) h += '<button class="addcard" data-new="">+ Add a wird</button>';
+  }
+
+  // ---------- progress ----------
+  function progress() {
+    const w = focusW();
+    let h = '<header class="top"><div><p class="eyebrow">Your consistency</p><h1 class="title">Progress</h1></div></header>';
+    if (!w) { h += '<section class="card empty"><p>Add a wird to see your progress here.</p><button class="btn primary" data-new="">Add a wird</button></section>'; paint(h, "progress"); root.querySelectorAll("[data-new]").forEach(b => b.onclick = () => go("new")); return; }
+    const { list, i } = posOf(w), tn = todayN(w), left = list.length - i, st = streak([w.log]), hm = heat(w), pace = paceDays(w);
+    h += switcher(w);
+    h += '<section class="stats">' +
+      '<div><strong>' + tn + (w.target ? "<small>/" + w.target + "</small>" : "") + "</strong><span>pages today</span></div>" +
+      "<div><strong>" + st + "</strong><span>day streak</span></div>" +
+      "<div><strong>" + left + "</strong><span>pages to go</span></div>" +
+      "<div><strong>" + (w.target ? finishText(w, left) : "–") + "</strong><span>" + (w.target ? (pace >= 1 ? pace + (pace === 1 ? " day" : " days") + " ahead" : pace <= -1 ? -pace + (pace === -1 ? " day" : " days") + " behind" : "on pace") : "set a daily goal") + "</span></div></section>";
+    h += '<section class="card"><div class="card-h"><h2>Last 7 days</h2></div>' + bars(w) + "</section>";
+    h += '<section class="card"><div class="card-h"><h2>Consistency</h2><span class="muted">' + hm.read + " of " + hm.total + " days</span></div>" + hm.html + "</section>";
+    h += '<section class="card"><div class="card-h"><h2>Juz map</h2><span class="muted">' + esc(w.round) + " " + w.cycle + "</span></div>" + juzMap(w, list, i) + '<p class="hint">Tap a juz to move your place to its first page.</p></section>';
+    if (w.weak.length) h += '<section class="card"><div class="card-h"><h2>Weak pages</h2><span class="muted">' + w.weak.length + '</span></div><div class="chips">' + w.weak.map(p => '<span class="wk"><a class="chip" href="https://quran.com/page/' + p + '" target="_blank" rel="noopener">p. ' + p + '</a><button class="x" data-unweak="' + p + '" aria-label="Unmark page ' + p + '">×</button></span>').join("") + "</div></section>";
+    paint(h, "progress");
+    bindSwitch(progress);
+    const restore = before => { Object.assign(w, JSON.parse(before)); touchW(w); save(); progress(); };
+    root.querySelectorAll("[data-jz]").forEach(b => b.onclick = () => { const p = +b.dataset.jz; if (!p || p === w.page) return; const before = JSON.stringify(w); setPage(w, p); progress(); toast("Moved your place to page " + p, () => restore(before)); });
+    root.querySelectorAll("[data-unweak]").forEach(b => b.onclick = () => { w.weak = w.weak.filter(x => x !== +b.dataset.unweak); touchW(w); save(); progress(); });
+  }
+
+  // ---------- settings ----------
+  function settings(openFold) {
     const t = Object.assign({}, DEFAULT_THEME, state.theme);
-    h += '<details class="fold" id="fold-appearance"><summary>Appearance</summary><div class="swatches">' +
-      Object.keys(PAL).map(k => { const c = PAL[k].light, d = PAL[k].dark; return '<button class="sw' + (t.pal === k ? " on" : "") + '" data-pal="' + k + '" aria-pressed="' + (t.pal === k) + '"><span><i style="background:' + c[0] + '"></i><i style="background:' + c[6] + '"></i><i style="background:' + c[5] + '"></i><i style="background:' + d[0] + '"></i></span>' + PAL[k].name + "</button>"; }).join("") +
-      '</div><div class="seg" style="margin-top:12px">' + [["auto", "Match phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => '<button class="chip' + (t.mode === k ? " on" : "") + '" data-mode="' + k + '" aria-pressed="' + (t.mode === k) + '">' + l + "</button>").join("") + "</div></details>";
+    let h = '<header class="top"><div><p class="eyebrow">Wird ' + APP_VERSION + '</p><h1 class="title">Settings</h1></div></header>';
+    h += '<section class="card"><div class="card-h"><h2>Your wirds</h2></div><div class="rows">' + state.wirds.map(w => '<a class="row-link" href="#w/' + esc(w.id) + '/edit"><span><strong>' + esc(w.name) + "</strong><small>" + plural(parseRanges(w.ranges).length, "page", "pages") + (w.target ? " · " + w.target + " a day" : "") + "</small></span>" + ICON.edit + "</a>").join("") +
+      (state.wirds.length < MAX_WIRDS ? '<button class="row-link add" data-new="">' + ICON.plus + "<span>Add a wird</span></button>" : "") + "</div></section>";
+    h += '<section class="card" id="appearance"><div class="card-h"><h2>Appearance</h2></div><div class="swatches">' +
+      Object.keys(PAL).map(k => { const c = PAL[k].light, d = PAL[k].dark; return '<button class="sw' + (t.pal === k ? " on" : "") + '" data-pal="' + k + '" aria-pressed="' + (t.pal === k) + '"><span class="dot2"><i style="background:' + c[6] + '"></i><i style="background:' + c[5] + '"></i><i style="background:' + d[0] + '"></i></span>' + PAL[k].name + "</button>"; }).join("") +
+      '</div><div class="seg" style="margin-top:12px">' + [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => '<button class="chip' + (t.mode === k ? " on" : "") + '" data-mode="' + k + '" aria-pressed="' + (t.mode === k) + '">' + l + "</button>").join("") + "</div></section>";
     h += prayerFold();
-    h += '<details class="fold" id="fold-backup"><summary>Backup code</summary><p class="muted small">Copy this to keep a backup, or paste one to restore. It is also how you move your wirds to another phone or to the app.</p>' +
+    h += '<details class="card fold" id="fold-backup"><summary><h2>Backup code</h2></summary><p class="muted small">Copy this to keep a backup, or paste one to restore. It is also how you move your wirds to another phone or to the app.</p>' +
       '<div class="row"><button class="btn" id="exp">Show code</button><button class="btn" id="copy" hidden>Copy</button></div>' +
       '<textarea id="bk" spellcheck="false" aria-label="Backup code"></textarea>' +
       '<div class="row"><button class="btn" id="imp">Restore from code</button></div><p class="msg" id="bmsg" role="status"></p></details>' +
-      '<p class="foot">Madani mushaf, 604 pages. Page and ayah data checked against alquran.cloud and quran.com.<br>Wird ' + APP_VERSION + '</p>';
-    paint(h);
+      '<p class="foot">Madani mushaf, 604 pages. Page and ayah data checked against alquran.cloud and quran.com.<br>Wird ' + APP_VERSION + "</p>";
+    paint(h, "settings");
     if (openFold) { const f = root.querySelector("#" + openFold); if (f) f.open = true; }
     bindPrayer();
-    if (opts.onHome) opts.onHome(root.querySelector(".acct-slot"));
-    root.querySelectorAll("[data-open]").forEach(b => b.onclick = () => go("w/" + b.dataset.open));
-    root.querySelectorAll("[data-new]").forEach(b => b.onclick = () => go("new" + (b.dataset.new ? "/" + b.dataset.new : "")));
-    const reopen = () => home("fold-appearance");
-    root.querySelectorAll("[data-pal]").forEach(b => b.onclick = () => { state.theme = Object.assign({}, DEFAULT_THEME, state.theme, { pal: b.dataset.pal }); save(); applyTheme(); reopen(); });
-    root.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { state.theme = Object.assign({}, DEFAULT_THEME, state.theme, { mode: b.dataset.mode }); save(); applyTheme(); reopen(); });
+    root.querySelectorAll("[data-new]").forEach(b => b.onclick = () => go("new"));
+    const again = () => { const y = window.scrollY; settings(); window.scrollTo(0, y); };
+    root.querySelectorAll("[data-pal]").forEach(b => b.onclick = () => { state.theme = Object.assign({}, DEFAULT_THEME, state.theme, { pal: b.dataset.pal }); save(); applyTheme(); again(); });
+    root.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { state.theme = Object.assign({}, DEFAULT_THEME, state.theme, { mode: b.dataset.mode }); save(); applyTheme(); again(); });
     $("exp").onclick = () => { $("bk").value = btoa(unescape(encodeURIComponent(JSON.stringify(state)))); $("copy").hidden = false; };
     $("copy").onclick = async () => { try { await navigator.clipboard.writeText($("bk").value); msg("bmsg", "Copied.", 1); } catch (e) { $("bk").select(); msg("bmsg", "Selected. Use your phone's Copy.", 1); } };
     let armed = false;
@@ -333,28 +409,26 @@ export function createWirdApp(root, opts = {}) {
       if (!d.wirds.length) { msg("bmsg", "That backup has no usable wirds.", 0); return; }
       if (!armed) { armed = true; $("imp").textContent = "Tap again to replace everything"; return; }
       const now = Date.now();
-      // A restore is a deliberate edit: stamp it as newer so it also wins over the synced copy.
       d.wirds.forEach(w => { w.updatedAt = now; });
       state.wirds.forEach(w => { if (!d.wirds.find(x => x.id === w.id)) { d.deleted[w.id] = now; d.gone = [w, ...d.gone.filter(x => x.id !== w.id)]; } });
       d.theme = d.theme || state.theme;
       if (!raw.prayer) d.prayer = state.prayer;
-      state = d; save(); applyTheme(); home(); msg("bmsg", "Restored " + d.wirds.length + (d.wirds.length === 1 ? " wird." : " wirds."), 1);
+      state = d; save(); applyTheme(); settings("fold-backup"); msg("bmsg", "Restored " + plural(d.wirds.length, "wird", "wirds") + ".", 1);
     };
   }
-  function msg(id, t, ok) { const e = $(id); if (e) { e.textContent = t; e.className = "msg " + (ok ? "ok" : "err"); } }
 
   // ---------- add / edit ----------
   let draft = null;
-  function newDraft(type) { type = TYPES[type] ? type : "khatmah"; return { id: null, type, name: TYPES[type].name, sel: { by: "surah", items: [] }, ranges: type === "khatmah" ? "1-604" : "", dir: 1, target: 0, parts: 0, start: "" }; }
-  function draftFrom(w) { return { id: w.id, type: w.type, name: w.name, sel: w.sel ? JSON.parse(JSON.stringify(w.sel)) : { by: "surah", items: [] }, ranges: w.ranges, dir: w.dir || 1, target: w.target || 0, parts: w.parts || 0, start: "" }; }
+  function newDraft(type) { type = TYPES[type] ? type : "khatmah"; return { id: null, type, name: TYPES[type].name, sel: emptySel(), mode: "juz", dir: 1, target: 0, parts: 0, start: "", q: "" }; }
+  function draftFrom(w) {
+    const sel = w.type === "khatmah" ? emptySel() : w.sel ? { ...emptySel(), ...JSON.parse(JSON.stringify(w.sel)) } : { ...emptySel(), pages: w.ranges };
+    return { id: w.id, type: w.type, name: w.name, sel, mode: sel.juz.length || (!sel.surah.length && !sel.pages) ? "juz" : sel.surah.length ? "surah" : "pages", dir: w.dir || 1, target: w.target || 0, parts: w.parts || 0, start: "", q: "" };
+  }
   function draftPages() {
     if (draft.type === "khatmah") return parseRanges("1-604");
-    if (draft.type === "hifz" && draft.sel.items.length) return selPages(draft.sel);
-    if (draft.type === "hifz") return draft.id ? parseRanges(draft.ranges) : null;
-    return parseRanges(draft.ranges);
+    const p = selPages(draft.sel);
+    return p.length ? p : null;
   }
-  function opts2(by, sel) { const n = by === "juz" ? 30 : 114; let h = ""; for (let k = 1; k <= n; k++) h += '<option value="' + k + '"' + (k === (sel || 1) ? " selected" : "") + ">" + (by === "juz" ? "Juz " + k : k + ". " + esc(nm(k))) + "</option>"; return h; }
-  // Pages still ahead of the reader in a draft: the whole thing for a new wird, from the bookmark for an existing one.
   function draftRemaining(pages) {
     if (!pages) return 0;
     const w = draft.id ? find(draft.id) : null;
@@ -363,54 +437,76 @@ export function createWirdApp(root, opts = {}) {
     return Math.max(1, pages.filter(p => (draft.dir === -1 ? p <= from : p >= from)).length);
   }
   function form() {
-    const d = draft, editing = !!d.id, pages = draftPages();
+    const d = draft, editing = !!d.id, pages = draftPages(), picking = d.type !== "khatmah";
     let h = '<header class="bar"><button class="iconbtn" id="back" aria-label="Back">' + ICON.back + '</button><h1>' + (editing ? "Edit wird" : "New wird") + "</h1><span></span></header>";
-    h += '<p class="lbl">Type</p><div class="seg">' + Object.keys(TYPES).map(k => '<button class="chip' + (d.type === k ? " on" : "") + '" data-type="' + k + '" aria-pressed="' + (d.type === k) + '">' + TYPES[k].label + "</button>").join("") + "</div>";
+    h += '<p class="lbl">What kind?</p><div class="types">' + [["khatmah", ICON.book, "Khatmah"], ["hifz", ICON.loop, "Hifz revision"], ["custom", ICON.list, "Other"]].map(([k, ic, l]) => '<button class="tcard' + (d.type === k ? " on" : "") + '" data-type="' + k + '" aria-pressed="' + (d.type === k) + '">' + ic + "<span>" + l + "</span></button>").join("") + "</div>";
     h += '<label class="lbl" for="fn">Name</label><input type="text" id="fn" maxlength="40" value="' + esc(d.name) + '">';
-    if (d.type === "khatmah") h += '<p class="hint">All 604 pages, Al-Fatihah to An-Nas. The khatmah count goes up each time you finish.</p>';
-    if (d.type === "hifz") {
-      const by = d.sel.by, n = by === "juz" ? 30 : 114;
-      h += '<p class="lbl">What have you memorised?</p><div class="seg"><button class="chip' + (by === "surah" ? " on" : "") + '" data-by="surah" aria-pressed="' + (by === "surah") + '">By surah</button><button class="chip' + (by === "juz" ? " on" : "") + '" data-by="juz" aria-pressed="' + (by === "juz") + '">By juz</button></div>' +
-        '<div class="panel"><p class="hint" style="margin-top:0">Add a run in one go</p><div class="row"><select id="rf" aria-label="From">' + opts2(by) + '</select><select id="rt" aria-label="To">' + opts2(by, n) + '</select><button class="btn" id="radd">Add</button></div>' +
-        '<p class="hint">Or tap to pick</p><div class="list"><div class="chips">';
-      for (let k = 1; k <= n; k++) { const on = d.sel.items.includes(k); h += '<button class="chip' + (on ? " on" : "") + '" data-item="' + k + '" aria-pressed="' + on + '">' + (by === "juz" ? "Juz " + k : k + ". " + esc(nm(k))) + "</button>"; }
-      h += '</div></div><div class="row"><button class="btn" id="clr">Clear all</button></div></div>';
-      if (editing && !d.sel.items.length) h += '<p class="hint">Currently pages ' + esc(d.ranges) + ". Pick surahs or juz to replace it.</p>";
+    if (!picking) h += '<p class="hint">All 604 pages, Al-Fatihah to An-Nas. The count goes up each time you finish.</p>';
+    else {
+      h += '<p class="lbl">' + (d.type === "hifz" ? "What have you memorised?" : "What's included?") + '</p><div class="seg">' + [["juz", "Juz"], ["surah", "Surahs"], ["pages", "Pages"]].map(([k, l]) => '<button class="chip' + (d.mode === k ? " on" : "") + '" data-tab="' + k + '" aria-pressed="' + (d.mode === k) + '">' + l + "</button>").join("") + "</div>";
+      if (d.mode === "juz") {
+        h += '<div class="jgrid" id="jgrid">' + Array.from({ length: 30 }, (_, k) => k + 1).map(j => '<button class="jt' + (d.sel.juz.includes(j) ? " on" : "") + '" data-juz="' + j + '" aria-pressed="' + d.sel.juz.includes(j) + '" aria-label="Juz ' + j + '">' + j + "</button>").join("") + '</div><p class="hint">Tap a juz, or drag across a row of them. Pick as many runs as you like.</p>';
+      } else if (d.mode === "surah") {
+        h += '<input type="search" id="sq" placeholder="Search surahs" value="' + esc(d.q) + '" aria-label="Search surahs" autocomplete="off"><div class="slist" id="slist">';
+        for (let k = 1; k <= 114; k++) { const on = d.sel.surah.includes(k); h += '<button class="srow' + (on ? " on" : "") + '" data-surah="' + k + '" data-name="' + esc((k + " " + nm(k)).toLowerCase()) + '" aria-pressed="' + on + '"><span class="sn">' + k + '</span><span class="st">' + esc(nm(k)) + '<small>' + plural(ayatCount(k), "ayah", "ayat") + '</small></span><span class="sc">' + (on ? ICON.check : "") + "</span></button>"; }
+        h += '</div><div class="row"><select id="rf" aria-label="From surah">' + opts2("surah", 1) + '</select><select id="rt" aria-label="To surah">' + opts2("surah", 114) + '</select><button class="btn" id="radd">Add run</button></div>';
+      } else {
+        h += '<input type="text" id="fr" inputmode="numeric" value="' + esc(d.sel.pages) + '" placeholder="e.g. 1-50, 562-604"><p class="hint">Madani page numbers. Separate ranges with commas.</p>';
+      }
+      const runs = describeSel(d.sel);
+      h += '<div class="picked" aria-live="polite">' + (runs.length ? runs.map(r => '<span class="pk">' + esc(r.label) + '<button class="x" data-run="' + r.kind + ":" + r.from + ":" + r.to + '" aria-label="Remove ' + esc(r.label) + '">×</button></span>').join("") + (runs.length > 1 ? '<button class="linkbtn" id="clr">Clear</button>' : "") : '<span class="muted small">Nothing picked yet</span>') + "</div>";
     }
-    if (d.type === "custom") h += '<label class="lbl" for="fr">Pages</label><input type="text" id="fr" value="' + esc(d.ranges) + '" placeholder="e.g. 1-50, 582-604"><p class="hint">Madani page ranges separated by commas.</p>';
-    h += '<p class="count"><strong id="pcount">' + (pages ? pages.length + " pages" : "Nothing picked yet") + "</strong>" + (pages && pages.length ? "<span>p. " + esc(compress(pages)) + "</span>" : "") + "</p>";
-    h += '<p class="lbl">Direction</p><div class="seg"><button class="chip' + (d.dir === 1 ? " on" : "") + '" data-dir="1" aria-pressed="' + (d.dir === 1) + '">From Al-Fatihah</button><button class="chip' + (d.dir === -1 ? " on" : "") + '" data-dir="-1" aria-pressed="' + (d.dir === -1) + '">From An-Nas</button></div>';
-    if (!editing) h += '<label class="lbl" for="fs">Where are you now?</label><input type="number" id="fs" inputmode="numeric" min="1" max="604" value="' + esc(d.start) + '" placeholder="Page number, or leave empty to start at the beginning">';
+    h += '<p class="count"><strong id="pcount">' + (pages ? plural(pages.length, "page", "pages") : "Nothing picked yet") + "</strong>" + (pages && pages.length ? "<span>about " + (Math.round(pages.length / 20 * 10) / 10) + " juz</span>" : "") + "</p>";
     const rem = draftRemaining(pages);
-    h += '<label class="lbl" for="ft">Daily target</label><div class="row"><input type="number" id="ft" inputmode="numeric" min="0" max="604" value="' + (d.target || "") + '" placeholder="Pages per day (optional)"></div><div class="chips" style="margin-top:8px">' + [[10, "Half juz"], [20, "1 juz"], [40, "2 juz"]].map(([v, l]) => '<button class="chip' + (d.target === v ? " on" : "") + '" data-tg="' + v + '">' + l + "</button>").join("") + "</div>";
-    if (rem > 0) h += '<p class="hint" style="margin-top:12px">Or pick a finish line</p><div class="chips">' + [10, 20, 30, 60, 90].map(n => '<button class="chip' + (d.target === targetForDays(rem, n) ? " on" : "") + '" data-days="' + n + '">' + n + ' days</button>').join("") + "</div>" + (d.target ? '<p class="hint">' + d.target + " pages a day finishes the " + rem + " pages ahead in " + Math.ceil(rem / d.target) + " days.</p>" : "");
-    h += '<div id="partsec"' + (d.target ? "" : " hidden") + '><p class="lbl">Split each day into sittings</p><div class="seg">' + [[0, "One go"], [2, "2"], [3, "3"], [4, "4"]].map(([v, l]) => '<button class="chip' + ((d.parts || 0) === v ? " on" : "") + '" data-parts="' + v + '" aria-pressed="' + ((d.parts || 0) === v) + '">' + l + "</button>").join("") + '</div><p class="hint">Smaller sittings tied to your day (commute, after Isha) are easier to keep than one long block.</p></div>';
-    h += '<button class="btn primary wide" id="fsave" style="margin-top:24px">' + (editing ? "Save changes" : "Create wird") + '</button><p class="msg" id="fmsg" role="status"></p>';
+    h += '<p class="lbl">Daily goal</p><div class="chips">' + [[2, "2 pages"], [5, "5"], [10, "10"], [20, "1 juz"], [40, "2 juz"]].map(([v, l]) => '<button class="chip' + (d.target === v ? " on" : "") + '" data-tg="' + v + '">' + l + "</button>").join("") + '</div><div class="row"><input type="number" id="ft" inputmode="numeric" min="0" max="604" value="' + (d.target || "") + '" placeholder="Or type pages a day" aria-label="Pages per day"></div>';
+    if (rem > 0) h += '<p class="hint">Or finish in</p><div class="chips">' + [7, 14, 30, 60, 90].map(n => '<button class="chip' + (d.target && d.target === targetForDays(rem, n) ? " on" : "") + '" data-days="' + n + '">' + n + " days</button>").join("") + "</div>" + (d.target ? '<p class="hint strong">' + d.target + " a day finishes the " + rem + " pages ahead in " + plural(Math.ceil(rem / d.target), "day", "days") + ".</p>" : "");
+    h += '<details class="more" id="more"><summary>More options</summary>';
+    h += '<p class="lbl">Direction</p><div class="seg"><button class="chip' + (d.dir === 1 ? " on" : "") + '" data-dir="1" aria-pressed="' + (d.dir === 1) + '">From Al-Fatihah</button><button class="chip' + (d.dir === -1 ? " on" : "") + '" data-dir="-1" aria-pressed="' + (d.dir === -1) + '">From An-Nas</button></div>';
+    if (!editing) h += '<label class="lbl" for="fs">Start from page</label><input type="number" id="fs" inputmode="numeric" min="1" max="604" value="' + esc(d.start) + '" placeholder="Leave empty to start at the beginning">';
+    h += '<div id="partsec"' + (d.target ? "" : " hidden") + '><p class="lbl">Split each day into sittings</p><div class="seg">' + [[0, "One go"], [2, "2"], [3, "3"], [4, "4"]].map(([v, l]) => '<button class="chip' + ((d.parts || 0) === v ? " on" : "") + '" data-parts="' + v + '" aria-pressed="' + ((d.parts || 0) === v) + '">' + l + "</button>").join("") + '</div><p class="hint">Smaller sittings tied to your day (commute, after Isha) are easier to keep than one long block.</p></div></details>';
+    h += '<div class="savebar"><button class="btn primary wide" id="fsave">' + (editing ? "Save changes" : "Create wird") + '</button></div><p class="msg" id="fmsg" role="status"></p>';
     if (editing) h += '<button class="btn danger wide" id="fdel">Delete this wird</button>';
     paint(h);
-
-    const keep = () => { d.name = $("fn").value; if ($("fr")) d.ranges = $("fr").value; if ($("fs")) d.start = $("fs").value; d.target = Math.min(PAGES, Math.max(0, parseInt($("ft").value, 10) || 0)); };
-    const rerender = () => { const y = window.scrollY, l = root.querySelector(".list"), ls = l ? l.scrollTop : 0; form(); window.scrollTo(0, y); const l2 = root.querySelector(".list"); if (l2) l2.scrollTop = ls; };
+    bindForm(editing);
+  }
+  function opts2(by, sel) { const n = by === "juz" ? 30 : 114; let h = ""; for (let k = 1; k <= n; k++) h += '<option value="' + k + '"' + (k === (sel || 1) ? " selected" : "") + ">" + (by === "juz" ? "Juz " + k : k + ". " + esc(nm(k))) + "</option>"; return h; }
+  function toggleIn(list, v, on) { const i = list.indexOf(v); if (on && i < 0) list.push(v); if (!on && i >= 0) list.splice(i, 1); list.sort((a, b) => a - b); }
+  function bindForm(editing) {
+    const d = draft;
+    const keep = () => { d.name = $("fn").value; if ($("fr")) d.sel.pages = $("fr").value; if ($("fs")) d.start = $("fs").value; if ($("sq")) d.q = $("sq").value; d.target = Math.min(PAGES, Math.max(0, parseInt($("ft").value, 10) || 0)); };
+    const rerender = () => { const y = window.scrollY, l = root.querySelector(".slist"), ls = l ? l.scrollTop : 0; form(); window.scrollTo(0, y); const l2 = root.querySelector(".slist"); if (l2) l2.scrollTop = ls; };
     $("back").onclick = () => go(editing ? "w/" + d.id : "");
-    root.querySelectorAll("[data-type]").forEach(b => b.onclick = () => { keep(); const old = TYPES[d.type].name; d.type = b.dataset.type; if (!d.name || d.name === old) d.name = TYPES[d.type].name; if (d.type === "custom" && d.ranges === "1-604" && !editing) d.ranges = ""; rerender(); });
-    root.querySelectorAll("[data-by]").forEach(b => b.onclick = () => { keep(); if (d.sel.by !== b.dataset.by) d.sel = { by: b.dataset.by, items: [] }; rerender(); });
-    root.querySelectorAll("[data-item]").forEach(b => b.onclick = () => { keep(); const k = +b.dataset.item, it = d.sel.items, i = it.indexOf(k); if (i >= 0) it.splice(i, 1); else it.push(k); it.sort((a, b) => a - b); rerender(); });
+    root.querySelectorAll("[data-type]").forEach(b => b.onclick = () => { keep(); const old = TYPES[d.type].name; d.type = b.dataset.type; if (!d.name || d.name === old) d.name = TYPES[d.type].name; rerender(); });
+    root.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { keep(); d.mode = b.dataset.tab; rerender(); });
+    root.querySelectorAll("[data-surah]").forEach(b => b.onclick = () => { keep(); const k = +b.dataset.surah; toggleIn(d.sel.surah, k, !d.sel.surah.includes(k)); rerender(); });
+    root.querySelectorAll("[data-run]").forEach(b => b.onclick = () => {
+      keep(); const [kind, a, z] = b.dataset.run.split(":"), from = +a, to = +z;
+      if (kind === "pages") d.sel.pages = compress((parseRanges(d.sel.pages) || []).filter(p => p < from || p > to));
+      else d.sel[kind] = d.sel[kind].filter(x => x < from || x > to);
+      rerender();
+    });
     root.querySelectorAll("[data-dir]").forEach(b => b.onclick = () => { keep(); d.dir = +b.dataset.dir; rerender(); });
     root.querySelectorAll("[data-tg]").forEach(b => b.onclick = () => { keep(); d.target = +b.dataset.tg; rerender(); });
     root.querySelectorAll("[data-days]").forEach(b => b.onclick = () => { keep(); d.target = targetForDays(draftRemaining(draftPages()), +b.dataset.days); rerender(); });
     root.querySelectorAll("[data-parts]").forEach(b => b.onclick = () => { keep(); d.parts = +b.dataset.parts; rerender(); });
-    if ($("radd")) $("radd").onclick = () => { keep(); let a = +$("rf").value, b = +$("rt").value; if (a > b) [a, b] = [b, a]; for (let k = a; k <= b; k++) if (!d.sel.items.includes(k)) d.sel.items.push(k); d.sel.items.sort((x, y) => x - y); rerender(); };
-    if ($("clr")) $("clr").onclick = () => { keep(); d.sel.items = []; rerender(); };
+    if ($("radd")) $("radd").onclick = () => { keep(); let a = +$("rf").value, b = +$("rt").value; if (a > b) [a, b] = [b, a]; for (let k = a; k <= b; k++) toggleIn(d.sel.surah, k, true); rerender(); };
+    if ($("clr")) $("clr").onclick = () => { keep(); d.sel = emptySel(); rerender(); };
+    if ($("sq")) $("sq").oninput = () => { d.q = $("sq").value; const q = d.q.trim().toLowerCase(); root.querySelectorAll(".srow").forEach(r => { r.hidden = !!q && !r.dataset.name.includes(q); }); };
+    if ($("sq") && d.q) $("sq").oninput();
+    if ($("fr")) $("fr").oninput = () => { d.sel.pages = $("fr").value; const p = draftPages(); $("pcount").textContent = parseRanges(d.sel.pages) || !d.sel.pages.trim() ? (p ? plural(p.length, "page", "pages") : "Nothing picked yet") : "Check the page ranges"; };
+    if ($("fr")) $("fr").onchange = () => { const p = parseRanges($("fr").value); if (p) { d.sel.pages = compress(p); rerender(); } };
     $("ft").oninput = () => { const n = parseInt($("ft").value, 10) || 0; $("partsec").hidden = n <= 0; };
-    if ($("fr")) $("fr").oninput = () => { d.ranges = $("fr").value; const p = parseRanges(d.ranges); $("pcount").textContent = p ? p.length + " pages" : "Check the page ranges"; };
+    bindJuzGrid(keep, rerender);
     $("fsave").onclick = () => {
       keep();
+      if (d.type !== "khatmah" && d.sel.pages.trim() && !parseRanges(d.sel.pages)) { msg("fmsg", "Enter page ranges between 1 and 604, like 1-50, 562-604.", 0); return; }
       const p = draftPages();
-      if (!p || !p.length) { msg("fmsg", d.type === "hifz" ? "Pick at least one surah or juz." : "Enter page ranges between 1 and 604, like 1-50, 582-604.", 0); return; }
+      if (!p || !p.length) { msg("fmsg", "Pick at least one juz, surah or page range.", 0); return; }
       const ranges = compress(p), name = d.name.replace(/\s+/g, " ").trim().slice(0, 40) || TYPES[d.type].name, parts = d.target ? d.parts || 0 : 0;
+      const sel = d.type === "khatmah" ? null : { juz: d.sel.juz, surah: d.sel.surah, pages: parseRanges(d.sel.pages) ? compress(parseRanges(d.sel.pages)) : "" };
       if (editing) {
         const w = find(d.id);
-        Object.assign(w, { name, type: d.type, round: TYPES[d.type].round, ranges, sel: d.type === "hifz" && d.sel.items.length ? d.sel : w.sel || null, dir: d.dir, target: d.target, parts });
+        Object.assign(w, { name, type: d.type, round: TYPES[d.type].round, ranges, sel, dir: d.dir, target: d.target, parts });
         w.weak = w.weak.filter(x => p.includes(x));
         if (!p.includes(w.page)) { const l = pagesOf(w); w.page = l.find(x => d.dir === 1 ? x > w.page : x < w.page) || l[0]; w.ayah = null; }
         touchW(w); save(); go("w/" + w.id);
@@ -419,10 +515,10 @@ export function createWirdApp(root, opts = {}) {
         const list = d.dir === -1 ? p.slice().reverse() : p;
         let start = list[0];
         const s = parseInt(d.start, 10);
-        if (d.start !== "" && !(s >= 1 && s <= PAGES)) { msg("fmsg", "Pages run from 1 to 604.", 0); return; }
+        if (d.start !== "" && !(s >= 1 && s <= PAGES)) { msg("fmsg", "Pages run from 1 to 604.", 0); const m = $("more"); if (m) m.open = true; return; }
         if (s) start = p.includes(s) ? s : (list.find(x => d.dir === 1 ? x > s : x < s) || list[0]);
-        const w = cleanWird({ id: Math.random().toString(36).slice(2, 10), name, type: d.type, ranges, sel: d.type === "hifz" ? d.sel : null, dir: d.dir, target: d.target, parts, page: start, cycle: 1, log: {}, createdAt: Date.now(), updatedAt: Date.now() });
-        state.wirds.push(w); save(); go("w/" + w.id);
+        const w = cleanWird({ id: Math.random().toString(36).slice(2, 10), name, type: d.type, ranges, sel, dir: d.dir, target: d.target, parts, page: start, cycle: 1, log: {}, createdAt: Date.now(), updatedAt: Date.now() });
+        state.wirds.push(w); setFocus(w.id); save(); go("w/" + w.id);
       }
     };
     let armed = false;
@@ -434,54 +530,55 @@ export function createWirdApp(root, opts = {}) {
       save(); go("");
     };
   }
+  // Tap toggles a juz. Pressing and dragging across tiles sets the whole run to the state of the first tile.
+  function bindJuzGrid(keep, rerender) {
+    const grid = $("jgrid"); if (!grid) return;
+    const d = draft;
+    let anchor = 0, mode = true, moved = false, lastJ = 0;
+    const tileAt = (x, y) => { const el = document.elementFromPoint ? document.elementFromPoint(x, y) : null; const t = el && el.closest ? el.closest("[data-juz]") : null; return t && grid.contains(t) ? +t.dataset.juz : 0; };
+    const paintRun = j => { const a = Math.min(anchor, j), b = Math.max(anchor, j); grid.querySelectorAll("[data-juz]").forEach(t => { const k = +t.dataset.juz; t.classList.toggle("live", k >= a && k <= b); t.classList.toggle("on", k >= a && k <= b ? mode : d.sel.juz.includes(k)); }); };
+    grid.addEventListener("pointerdown", e => { const t = e.target.closest("[data-juz]"); if (!t) return; anchor = lastJ = +t.dataset.juz; mode = !d.sel.juz.includes(anchor); moved = false; try { grid.setPointerCapture(e.pointerId); } catch (x) {} });
+    grid.addEventListener("pointermove", e => { if (!anchor) return; const j = tileAt(e.clientX, e.clientY); if (j && j !== lastJ) { lastJ = j; moved = true; paintRun(j); e.preventDefault(); } });
+    const end = () => { if (!anchor) return; if (moved) { keep(); const a = Math.min(anchor, lastJ), b = Math.max(anchor, lastJ); for (let k = a; k <= b; k++) toggleIn(d.sel.juz, k, mode); vibrate(); rerender(); } anchor = 0; };
+    grid.addEventListener("pointerup", end);
+    grid.addEventListener("pointercancel", () => { anchor = 0; rerender(); });
+    grid.querySelectorAll("[data-juz]").forEach(b => b.onclick = () => { if (moved) { moved = false; return; } keep(); const k = +b.dataset.juz; toggleIn(d.sel.juz, k, !d.sel.juz.includes(k)); rerender(); });
+  }
 
-  // ---------- wird screen ----------
+  // ---------- reading screen ----------
   function shareText(w) {
     const { list, i } = posOf(w), tn = todayN(w), st = streak([w.log]);
-    return w.name + ": page " + w.page + " (Juz " + juzOf(w.page) + "), " + (i + 1) + " of " + list.length + ". " + tn + (tn === 1 ? " page" : " pages") + " today" + (st ? ", " + st + "-day streak" : "") + ".";
+    return w.name + ": page " + w.page + " (Juz " + juzOf(w.page) + "), " + (i + 1) + " of " + list.length + ". " + plural(tn, "page", "pages") + " today" + (st ? ", " + st + "-day streak" : "") + ".";
   }
   function detail(w) {
-    const { list, i } = posOf(w), fwd = w.dir !== -1, tn = todayN(w), left = list.length - i;
-    const st = streak([w.log]), met = w.target && tn >= w.target;
-    let eta = "";
-    if (w.target) {
-      const days = Math.ceil(left / w.target), d = new Date(); d.setDate(d.getDate() + days);
-      const pace = paceDays(w);
-      eta = "At " + w.target + " pages a day, this " + w.round.toLowerCase() + " finishes around " + shortDate(d) + "." + (pace >= 1 ? " You're about " + pace + (pace === 1 ? " day" : " days") + " ahead this week." : pace <= -1 ? " You're about " + -pace + (pace === -1 ? " day" : " days") + " behind this week." : "");
-    }
-    const hm = heat(w), weakHere = w.weak.includes(w.page), parts = w.target && w.parts > 1 ? w.parts : 0, done = parts ? sittingsDone(w.target, parts, tn) : 0;
-    let h = '<header class="bar"><button class="iconbtn" id="back" aria-label="All wirds">' + ICON.back + '</button><h1>' + esc(w.name) + '</h1><button class="iconbtn" id="edit" aria-label="Edit this wird">' + ICON.edit + "</button></header>" +
-      '<div class="dial"><button class="step" id="prev" aria-label="Back one page">' + (fwd ? "−" : "+") + '</button>' +
-      '<div class="medal">' + SEAL(200, "orn big", w.target ? Math.min(1, tn / w.target) : i / list.length, met) + '<input id="pg" type="number" inputmode="numeric" min="1" max="604" value="' + w.page + '" aria-label="Page number"><small>page</small></div>' +
+    const { list, i } = posOf(w), fwd = w.dir !== -1, tn = todayN(w), goal = w.target || 0;
+    const weakHere = w.weak.includes(w.page), parts = goal && w.parts > 1 ? w.parts : 0, done = parts ? sittingsDone(goal, parts, tn) : 0;
+    let h = '<header class="bar"><button class="iconbtn" id="back" aria-label="Back to today">' + ICON.back + '</button><h1>' + esc(w.name) + '</h1><button class="iconbtn" id="edit" aria-label="Edit this wird">' + ICON.edit + "</button></header>";
+    h += '<p class="rsub">' + esc(w.round) + " " + w.cycle + " · " + (i + 1) + " of " + list.length + (goal ? " · " + tn + "/" + goal + " today" : tn ? " · " + tn + " today" : "") + "</p>";
+    h += '<div class="dial"><button class="step" id="prev" aria-label="Back one page">' + (fwd ? "−" : "+") + '</button>' +
+      '<div class="medal">' + ring(210, goal ? tn / goal : i / list.length, "big") + '<div class="mnum"><small>Page</small><input id="pg" type="number" inputmode="numeric" min="1" max="604" value="' + w.page + '" aria-label="Page number"><small>Juz ' + juzOf(w.page) + "</small></div></div>" +
       '<button class="step" id="next" aria-label="Forward one page">' + (fwd ? "+" : "−") + "</button></div>" +
-      '<p class="where">' + esc(posText(w)) + "</p>" +
-      '<p class="sub">Juz ' + juzOf(w.page) + ", " + (i + 1) + " of " + list.length + " pages, " + esc(w.round.toLowerCase()) + " " + w.cycle + (w.ayah ? "<br>Page " + w.page + ": " + esc(rangeText(w.page)) : "") + '</p><p class="msg center" id="pmsg" role="status"></p>' +
-      '<div class="quick">' + [2, 5, 10, 20].map(n => '<button class="chip" data-q="' + n + '">+' + n + "</button>").join("") + "</div>" +
-      '<div class="quick"><button class="chip flag' + (weakHere ? " on" : "") + '" id="weak" aria-label="Mark this page as weak" aria-pressed="' + weakHere + '">' + ICON.flag + (weakHere ? " Weak ✓" : " Weak") + '</button><a class="chip ext" href="https://quran.com/page/' + w.page + '" target="_blank" rel="noopener">Open page ' + ICON.ext + '</a><button class="chip" id="share">' + ICON.share + " Share</button></div>";
+      '<p class="where">' + esc(posText(w)) + "</p>" + (w.ayah ? '<p class="sub">Page ' + w.page + ": " + esc(rangeText(w.page)) + "</p>" : "") + '<p class="msg center" id="pmsg" role="status"></p>' +
+      '<div class="quick">' + [2, 5, 10, 20].map(n => '<button class="chip" data-q="' + n + '">+' + n + "</button>").join("") + "</div>";
     if (parts) {
-      const per = w.target / parts, need = Math.max(1, Math.ceil(per * (done + 1) - tn - 1e-9));
+      const per = goal / parts, need = Math.max(1, Math.ceil(per * (done + 1) - tn - 1e-9));
       h += '<section class="sit"><div class="dots big" aria-label="' + done + " of " + parts + ' sittings done">' + Array.from({ length: parts }, (_, k) => '<i class="' + (k < done ? "on" : "") + '"><b>' + (k + 1) + "</b></i>").join("") + "</div>" +
-        '<p class="hint center">' + (done >= parts ? "Every sitting done today. Alhamdulillah." : "Sitting " + (done + 1) + " of " + parts + ": " + need + (need === 1 ? " more page" : " more pages")) + "</p></section>";
+        '<p class="hint center">' + (done >= parts ? "Every sitting done today. Alhamdulillah." : "Sitting " + (done + 1) + " of " + parts + ": " + plural(need, "more page", "more pages")) + "</p></section>";
     }
-    h += '<section class="stats"><div class="srow"><div><strong>' + tn + (w.target ? "<small>/" + w.target + "</small>" : "") + '</strong><span>pages today</span></div><div><strong>' + st + '</strong><span>day streak</span></div><div><strong>' + left + '</strong><span>pages to go</span></div></div>' + bars(w) +
-      '<p class="hint center" style="margin-top:14px">Read on <strong>' + hm.read + "</strong> of the last " + hm.total + " days</p>" + hm.html + (eta ? '<p class="hint">' + eta + "</p>" : "") + "</section>" +
-      '<section><h2>Juz map</h2>' + juzMap(w, list, i) + '<p class="hint">Tap a juz to move your place to its first page in this wird.</p></section>';
-    if (w.weak.length) h += '<section><h2>Weak pages</h2><div class="chips">' + w.weak.map(p => '<span class="wk"><a class="chip" href="https://quran.com/page/' + p + '" target="_blank" rel="noopener">p. ' + p + '</a><button class="x" data-unweak="' + p + '" aria-label="Unmark page ' + p + '">×</button></span>').join("") + '</div><p class="hint">Tap a page to open it and revise. Your place here does not move.</p></section>';
-    h += '<section><h2>Where did you stop?</h2>';
+    h += '<div class="actions"><button class="act flag' + (weakHere ? " on" : "") + '" id="weak" aria-label="Mark this page as weak" aria-pressed="' + weakHere + '">' + ICON.flag + "<span>" + (weakHere ? "Weak" : "Mark weak") + '</span></button><a class="act" href="https://quran.com/page/' + w.page + '" target="_blank" rel="noopener">' + ICON.ext + '<span>Open page</span></a><button class="act" id="share">' + ICON.share + "<span>Share</span></button></div>";
+    h += '<details class="card fold" id="stop"' + (w.ayah ? "" : "") + '><summary><h2>Where did you stop?</h2><span class="muted small">' + (w.ayah ? esc(nm(w.ayah[0]) + " " + w.ayah[1]) : "Optional") + "</span></summary>";
     ayatOnPage(w.page).forEach(g => {
       h += '<div class="group"><p>' + esc(nm(g.s)) + '</p><div class="chips">';
       for (let a = g.from; a <= g.to; a++) { const on = w.ayah && w.ayah[0] === g.s && w.ayah[1] === a; h += '<button class="chip ay' + (on ? " on" : "") + '" data-s="' + g.s + '" data-a="' + a + '" aria-pressed="' + on + '">' + a + "</button>"; }
       h += "</div></div>";
     });
-    h += '<p class="hint">Tap again to clear.</p></section>' +
-      '<section><h2>Jump to</h2><div class="row"><select id="js" aria-label="Surah">' + opts2("surah", w.ayah ? w.ayah[0] : ayatOnPage(w.page)[0].s) +
-      '</select><input id="ja" type="number" inputmode="numeric" min="1" placeholder="Ayah" aria-label="Ayah" class="ayin"><button class="btn primary" id="jgo">Go</button></div><p class="msg" id="jmsg" role="status"></p></section>';
+    h += '<p class="hint">Tap again to clear.</p></details>' +
+      '<details class="card fold" id="jump"><summary><h2>Jump to an ayah</h2></summary><div class="row"><select id="js" aria-label="Surah">' + opts2("surah", w.ayah ? w.ayah[0] : ayatOnPage(w.page)[0].s) +
+      '</select><input id="ja" type="number" inputmode="numeric" min="1" placeholder="Ayah" aria-label="Ayah" class="ayin"><button class="btn primary" id="jgo">Go</button></div><p class="msg" id="jmsg" role="status"></p></details>';
     paint(h);
-    const snap = () => JSON.stringify(w);
-    // Undo puts today's count back, so it is stamped as a fresh change and wins over the synced copy.
     const restore = before => { Object.assign(w, JSON.parse(before)); stampDay(w, dayKey()); touchW(w); save(); detail(w); };
     const doStep = n => {
-      const before = snap(), cyc = w.cycle, moved = step(w, n); vibrate(); detail(w);
+      const before = JSON.stringify(w), cyc = w.cycle, moved = step(w, n); vibrate(); detail(w);
       if (n > 0 && w.cycle > cyc) toast(w.round + " " + cyc + " complete. Alhamdulillah!", () => restore(before));
       else if (Math.abs(n) > 1 && moved) toast("Moved " + Math.abs(moved) + " pages to p. " + w.page, () => restore(before));
     };
@@ -491,8 +588,6 @@ export function createWirdApp(root, opts = {}) {
     $("next").onclick = () => doStep(1);
     root.querySelectorAll("[data-q]").forEach(b => b.onclick = () => doStep(+b.dataset.q));
     $("weak").onclick = () => { w.weak = weakHere ? w.weak.filter(x => x !== w.page) : [...w.weak, w.page].sort((a, b) => a - b); touchW(w); save(); vibrate(); detail(w); };
-    root.querySelectorAll("[data-unweak]").forEach(b => b.onclick = () => { w.weak = w.weak.filter(x => x !== +b.dataset.unweak); touchW(w); save(); detail(w); });
-    root.querySelectorAll("[data-jz]").forEach(b => b.onclick = () => { const p = +b.dataset.jz; if (!p || p === w.page) return; const before = snap(); setPage(w, p); detail(w); toast("Moved your place to page " + p, () => restore(before)); });
     $("share").onclick = async () => {
       const text = shareText(w);
       if (opts.share) { if (await opts.share(text)) return; }
@@ -526,7 +621,9 @@ export function createWirdApp(root, opts = {}) {
     let m, w;
     if ((m = hsh.match(/^#new(?:\/(\w+))?/))) { if (!draft || draft.id || draft.fresh !== hsh) { draft = newDraft(m[1]); draft.fresh = hsh; } current = "form"; form(); }
     else if ((m = hsh.match(/^#w\/([a-z0-9]+)\/edit/)) && (w = find(m[1]))) { if (!draft || draft.id !== m[1]) draft = draftFrom(w); current = "form"; form(); }
-    else if ((m = hsh.match(/^#w\/([a-z0-9]+)/)) && (w = find(m[1]))) { draft = null; current = "detail:" + w.id; detail(w); }
+    else if ((m = hsh.match(/^#w\/([a-z0-9]+)/)) && (w = find(m[1]))) { draft = null; setFocus(w.id); current = "detail:" + w.id; detail(w); }
+    else if (hsh === "#progress") { draft = null; current = "progress"; progress(); }
+    else if (hsh === "#settings") { draft = null; current = "settings"; settings(); }
     else { draft = null; current = "home"; home(); }
     window.scrollTo(0, 0);
   }
@@ -538,7 +635,8 @@ export function createWirdApp(root, opts = {}) {
   const onVis = () => { if (!document.hidden) { refreshNotif(); if (staleCalendar()) syncCalendar(false); if (current !== "form") rerenderInPlace(); } };
   function rerenderInPlace() {
     const y = window.scrollY;
-    if (current === "home") home(); else if (current.startsWith("detail:")) { const w = find(current.slice(7)); if (w) detail(w); else go(""); }
+    if (current === "home") home(); else if (current === "progress") progress(); else if (current === "settings") settings();
+    else if (current.startsWith("detail:")) { const w = find(current.slice(7)); if (w) detail(w); else go(""); }
     window.scrollTo(0, y);
   }
   window.addEventListener("hashchange", route);

@@ -191,7 +191,7 @@ describe("cleaning untrusted state", () => {
   it("validates ayah, sel and weak pages", () => {
     const w = cleanWird(mk({ ayah: [2, 9999], sel: { by: "surah", items: [1, 1, 999, "2"] }, weak: [1, 1, 3, 99, "x"] }))!
     expect(w.ayah).toBeNull() // Al-Baqarah has 286 ayat, 9999 is rejected
-    expect(w.sel).toEqual({ by: "surah", items: [1, 2] })
+    expect(w.sel).toEqual({ juz: [], surah: [1, 2], pages: "" })
     expect(w.weak).toEqual([1, 3])
     expect(cleanWird(mk({ ayah: [2, 286] }))!.ayah).toEqual([2, 286])
     expect(cleanWird(mk({ ayah: [1, 8] }))!.ayah).toBeNull()
