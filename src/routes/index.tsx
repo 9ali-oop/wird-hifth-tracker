@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useConvexAuth, useMutation, useQuery } from 'convex/react'
+import { useAction, useConvexAuth, useMutation, useQuery } from 'convex/react'
 import { api } from '@/convex/_generated/api'
 import { createWirdApp, stableKey } from '@/wird/app'
 import { AccountChip, type SyncStatus } from '@/components/account-chip'
@@ -19,6 +19,9 @@ function App() {
   const { isAuthenticated } = useConvexAuth()
   const remote = useQuery(api.wird.getMine, isAuthenticated ? {} : 'skip')
   const saveMine = useMutation(api.wird.saveMine)
+  const fetchCalendar = useAction(api.prayer.fetchCalendar)
+  const fetchCalendarRef = useRef(fetchCalendar)
+  fetchCalendarRef.current = fetchCalendar
 
   const authedRef = useRef(false)
   authedRef.current = isAuthenticated
@@ -54,6 +57,7 @@ function App() {
     const app = createWirdApp(rootRef.current, {
       onChange: () => pushRef.current(),
       onHome: (el: HTMLElement) => setSlot(el),
+      fetchCalendar: (url: string) => fetchCalendarRef.current({ url }),
     })
     appRef.current = app
     if ('serviceWorker' in navigator && window.location.protocol === 'https:') {

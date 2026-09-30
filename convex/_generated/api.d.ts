@@ -7,6 +7,7 @@ import type * as authUsers from "../authUsers.js";
 import type * as googleAuth from "../googleAuth.js";
 import type * as http from "../http.js";
 import type * as macaly from "../macaly.js";
+import type * as prayer from "../prayer.js";
 import type * as wird from "../wird.js";
 
 import type {
@@ -23,6 +24,7 @@ declare const fullApi: ApiFromModules<{
   googleAuth: typeof googleAuth;
   http: typeof http;
   macaly: typeof macaly;
+  prayer: typeof prayer;
   wird: typeof wird;
 }>;
 

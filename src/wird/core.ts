@@ -1,6 +1,7 @@
 // Pure logic for the wird tracker: Qur'an page maths, date keys, state cleaning and merging.
 // No DOM in here, so all of it can be unit tested.
 import { QDATA as Q } from "./quran-data";
+import { cleanPrayer } from "./prayer";
 
 export const PAGES = 604;
 export const MAX_WIRDS = 30;
@@ -169,8 +170,9 @@ export function cleanWird(raw: any, fallbackCreated = 0): any | null {
 const dateVal = (k: string) => { const [y, m, d] = k.split("-").map(Number); return y * 10000 + m * 100 + d; };
 
 export function cleanState(raw: any): any {
-  const out: any = { v: 5, wirds: [], deleted: {}, updatedAt: 0 };
+  const out: any = { v: 5, wirds: [], deleted: {}, updatedAt: 0, prayer: cleanPrayer(null) };
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.wirds)) return out;
+  out.prayer = cleanPrayer(raw.prayer);
   const seen = new Set<string>();
   for (let i = 0; i < raw.wirds.length; i++) {
     const r = raw.wirds[i];
@@ -219,7 +221,15 @@ export function mergeStates(a: any, b: any): any {
   const wirds = Object.values(byId)
     .filter((w: any) => !(deleted[w.id] && deleted[w.id] >= (w.updatedAt || 0)))
     .sort((x: any, y: any) => (x.createdAt || 0) - (y.createdAt || 0) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
-  return { v: 5, wirds, deleted, theme: newer.theme || a.theme || b.theme, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0) };
+  // Reminder settings follow whichever copy was edited last; the calendar-derived days follow whichever was read last.
+  const pa = a.prayer, pb = b.prayer;
+  let prayer = pa || pb;
+  if (pa && pb) {
+    const win = (pb.updatedAt || 0) > (pa.updatedAt || 0) || ((pb.updatedAt || 0) === (pa.updatedAt || 0) && JSON.stringify(norm(pb)) > JSON.stringify(norm(pa))) ? pb : pa;
+    const fresh = (pb.syncedAt || 0) > (pa.syncedAt || 0) || ((pb.syncedAt || 0) === (pa.syncedAt || 0) && JSON.stringify(norm(pb.days)) > JSON.stringify(norm(pa.days))) ? pb : pa;
+    prayer = { ...win, days: fresh.days, syncedAt: fresh.syncedAt };
+  }
+  return { v: 5, wirds, deleted, theme: newer.theme || a.theme || b.theme, prayer, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0) };
 }
 
 const norm = (v: any): any =>
@@ -227,5 +237,5 @@ const norm = (v: any): any =>
 
 // Order-insensitive fingerprint, used to tell whether a merge changed anything.
 export function stableKey(s: any): string {
-  return JSON.stringify(norm({ wirds: (s && s.wirds) || [], deleted: (s && s.deleted) || {}, theme: (s && s.theme) || null }));
+  return JSON.stringify(norm({ wirds: (s && s.wirds) || [], deleted: (s && s.deleted) || {}, theme: (s && s.theme) || null, prayer: (s && s.prayer) || null }));
 }

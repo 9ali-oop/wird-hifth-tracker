@@ -4,10 +4,15 @@ import {
   mergeStates, paceDays, pageOf, parseRanges, rangeText, selPages, sittingsDone, stableKey, surahName as nm, targetForDays,
 } from "./core";
 import { DEFAULT_THEME, PAL, themeCss } from "./themes";
+import {
+  MAX_OFFSET, MAX_REMINDER_PAGES, PRAYERS, PRAYER_LABEL, cleanPrayer, fmtTime, nextUp, parseIcs, planReminders, reminderText,
+  remindersToIcs, timetableFromEvents,
+} from "./prayer";
 
 export { mergeStates, stableKey, PAL };
 
 const KEY = "wird-bookmarks-v3";
+const ICAL_KEY = "wird-ical-url"; // the calendar link is a secret, so it stays on this device and is never synced
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const shortDate = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 const RING_C = 2 * Math.PI * 46;
@@ -56,6 +61,123 @@ export function createWirdApp(root, opts = {}) {
     return n;
   }
   const posText = w => w.ayah ? "Stopped at " + nm(w.ayah[0]) + " " + w.ayah[1] : rangeText(w.page);
+
+
+  // ---------- prayer reminders ----------
+  const getIcal = () => { try { return localStorage.getItem(ICAL_KEY) || ""; } catch (e) { return ""; } };
+  const setIcal = v => { try { if (v) localStorage.setItem(ICAL_KEY, v); else localStorage.removeItem(ICAL_KEY); } catch (e) {} };
+  const reminderWird = () => find(state.prayer.wird) || state.wirds[0] || null;
+  function setPrayer(patch) {
+    state.prayer = cleanPrayer(Object.assign({}, state.prayer, patch, { updatedAt: Date.now() }));
+    save(); scheduleNotifications();
+  }
+  const notifState = () => (typeof Notification === "undefined" ? "unsupported" : Notification.permission);
+  let notifTimers = [];
+  function clearNotifTimers() { notifTimers.forEach(clearTimeout); notifTimers = []; }
+  async function notify(r) {
+    const w = reminderWird(), body = reminderText(r, state.prayer) + (w ? ". " + w.name + ", page " + w.page : "");
+    const opts2_ = { body, tag: "wird-" + r.day + "-" + r.prayer, icon: "/icon-192.png", badge: "/icon-192.png", data: { url: "/" } };
+    try {
+      const reg = navigator.serviceWorker && (await navigator.serviceWorker.getRegistration());
+      if (reg && reg.showNotification) { await reg.showNotification("Wird", opts2_); return true; }
+    } catch (e) {}
+    try { new Notification("Wird", opts2_); return true; } catch (e) { return false; }
+  }
+  // Timers only live while the app is running, so this tops up the next 24 hours whenever the app is opened or refocused.
+  function scheduleNotifications() {
+    clearNotifTimers();
+    if (notifState() !== "granted") return;
+    const now = Date.now();
+    planReminders(state.prayer, now, now + 24 * 3600000).forEach(r => {
+      const ms = r.at - now;
+      if (ms > 0 && ms < 2147483647) notifTimers.push(setTimeout(() => notify(r), ms));
+    });
+  }
+  let calBusy = false;
+  async function syncCalendar(manual) {
+    const url = getIcal();
+    if (!url || !opts.fetchCalendar || calBusy) { if (manual && !opts.fetchCalendar) msg("pstat", "Sign in to read a calendar link.", 0); return false; }
+    calBusy = true;
+    if (manual) msg("pstat", "Reading the calendar…", 1);
+    try {
+      const r = await opts.fetchCalendar(url);
+      if (!r || !r.ok) { if (manual) msg("pstat", (r && r.message) || "Could not read the calendar.", 0); return false; }
+      const parsed = parseIcs(r.ics), days = timetableFromEvents(parsed.events, parsed.tz), n = Object.keys(days).length;
+      if (!n) { if (manual) msg("pstat", "No prayer times found in that calendar. Events should be named Fajr, Dhuhr, Asr, Maghrib and Isha.", 0); return false; }
+      setPrayer({ days: Object.assign({}, state.prayer.days, days), syncedAt: Date.now() });
+      if (current === "home") { const y = window.scrollY; home("fold-prayer"); window.scrollTo(0, y); msg("pstat", "Read " + n + (n === 1 ? " day" : " days") + " of prayer times.", 1); }
+      return true;
+    } catch (e) { if (manual) msg("pstat", "Could not read the calendar. Try again in a moment.", 0); return false; }
+    finally { calBusy = false; }
+  }
+  const staleCalendar = () => state.prayer.mode === "calendar" && getIcal() && Date.now() - state.prayer.syncedAt > 6 * 3600000;
+  const mins = ms => Math.max(0, Math.round(ms / 60000));
+  const inText = m => (m < 1 ? "now" : m < 60 ? "in " + m + " min" : "in " + Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : ""));
+  function nextUpHtml() {
+    const P = state.prayer;
+    if (!P.prayers.length) return "";
+    const n = nextUp(P, Date.now());
+    if (!n) return '<div class="nextup idle"><span>Reminders are on, but there are no prayer times yet. Open Prayer reminders to add them.</span></div>';
+    const w = reminderWird(), left = n.at - Date.now();
+    return '<div class="nextup' + (n.due ? " due" : "") + '"><div><strong>' + PRAYER_LABEL[n.prayer] + " jamat " + fmtTime(n.jamat) + "</strong><span>" +
+      (n.due ? "Time to read: " : "") + esc(reminderText(n, P)) + (w ? " · " + esc(w.name) + ", page " + w.page : "") + "</span></div><b>" + (n.due ? inText(mins(n.jamat - Date.now())).replace("in ", "") + " left" : inText(mins(left))) + "</b></div>";
+  }
+  function prayerFold() {
+    const P = state.prayer, ns = notifState(), cal = P.mode === "calendar";
+    let h = '<details class="fold" id="fold-prayer"><summary>Prayer reminders' + (P.prayers.length ? ' <span class="badge">On</span>' : "") + '</summary><p class="muted small">A nudge to read a few pages before (or after) the congregation prayer, at whatever timing suits you.</p>';
+    h += '<p class="lbl">Remind me for</p><div class="chips">' + PRAYERS.map(p => '<button class="chip' + (P.prayers.includes(p) ? " on" : "") + '" data-pray="' + p + '" aria-pressed="' + P.prayers.includes(p) + '">' + PRAYER_LABEL[p] + "</button>").join("") + "</div>";
+    h += '<p class="lbl">When</p><div class="seg"><button class="chip' + (P.dir === -1 ? " on" : "") + '" data-pdir="-1" aria-pressed="' + (P.dir === -1) + '">Before jamat</button><button class="chip' + (P.dir === 1 ? " on" : "") + '" data-pdir="1" aria-pressed="' + (P.dir === 1) + '">After jamat</button></div>';
+    h += '<div class="chips" style="margin-top:8px">' + [0, 15, 30, 45, 60].map(n => '<button class="chip' + (P.offset === n ? " on" : "") + '" data-poff="' + n + '">' + (n === 0 ? "At jamat" : n + " min") + "</button>").join("") + '</div><div class="row"><input type="number" id="poff" inputmode="numeric" min="0" max="' + MAX_OFFSET + '" value="' + P.offset + '" aria-label="Minutes from jamat"><span class="muted small">minutes, or type your own</span></div>';
+    h += '<p class="lbl">Pages each time</p><div class="chips">' + [2, 3, 4, 5, 10].map(n => '<button class="chip' + (P.pages === n ? " on" : "") + '" data-ppages="' + n + '">' + n + "</button>").join("") + '</div><div class="row"><input type="number" id="ppages" inputmode="numeric" min="1" max="' + MAX_REMINDER_PAGES + '" value="' + P.pages + '" aria-label="Pages each time"><span class="muted small">pages, or type your own</span></div>';
+    if (state.wirds.length > 1) h += '<label class="lbl" for="pwird">For which wird</label><select id="pwird">' + state.wirds.map(w => '<option value="' + esc(w.id) + '"' + ((P.wird || state.wirds[0].id) === w.id ? " selected" : "") + ">" + esc(w.name) + "</option>").join("") + "</select>";
+    h += '<p class="lbl">Jamat times</p><div class="seg"><button class="chip' + (cal ? " on" : "") + '" data-pmode="calendar" aria-pressed="' + cal + '">From a calendar</button><button class="chip' + (!cal ? " on" : "") + '" data-pmode="manual" aria-pressed="' + !cal + '">Type them in</button></div>';
+    if (cal) {
+      h += '<label class="lbl" for="ical" style="margin-top:12px">Calendar link</label><input type="url" id="ical" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://calendar.google.com/…/basic.ics" value="' + esc(getIcal()) + '">' +
+        '<div class="row"><button class="btn" id="isync">Read times now</button></div><p class="msg" id="pstat" role="status">' + (P.syncedAt ? "Last read " + new Date(P.syncedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + ", " + Object.keys(P.days).length + " days." : "") + "</p>" +
+        '<p class="hint">Use a calendar whose events are named Fajr, Dhuhr, Asr, Maghrib and Isha, and end at the iqamah. In Google Calendar: Settings, pick the calendar, then "Secret address in iCal format". The link stays on this device. Needs you to be signed in.</p>';
+    } else {
+      h += '<div class="times">' + PRAYERS.map(p => '<label for="pm-' + p + '">' + PRAYER_LABEL[p] + '</label><input type="time" id="pm-' + p + '" value="' + esc(P.manual[p] || "") + '">').join("") + '</div><p class="hint">Times that do not change from day to day. Leave a prayer empty to skip it.</p>';
+    }
+    h += '<p class="lbl">Get the reminders</p><div class="row wrapbtn">';
+    if (ns === "granted") h += '<button class="btn" id="ptest">Send a test</button><span class="okmark">Notifications on</span>';
+    else if (ns === "default") h += '<button class="btn" id="pnotif">Turn on notifications</button>';
+    else h += '<span class="muted small">' + (ns === "denied" ? "Notifications are blocked for this site in your browser settings." : "This browser cannot show notifications.") + "</span>";
+    h += '<button class="btn" id="pcal">Add next 14 days to my calendar</button></div><p class="msg" id="pmsg" role="status"></p>' +
+      '<p class="hint">Notifications only arrive while Wird is open or running in the background, which some phones limit. For alerts that always arrive, add the reminders to your calendar: they are ordinary events with an alert, so your phone handles the rest. Add again every couple of weeks to refresh the times.</p></details>';
+    return h;
+  }
+  function bindPrayer() {
+    const open = () => { const y = window.scrollY; home("fold-prayer"); window.scrollTo(0, y); };
+    const P = () => state.prayer;
+    root.querySelectorAll("[data-pray]").forEach(b => b.onclick = () => { const p = b.dataset.pray, cur = P().prayers; setPrayer({ prayers: cur.includes(p) ? cur.filter(x => x !== p) : [...cur, p] }); open(); });
+    root.querySelectorAll("[data-pdir]").forEach(b => b.onclick = () => { setPrayer({ dir: +b.dataset.pdir }); open(); });
+    root.querySelectorAll("[data-poff]").forEach(b => b.onclick = () => { setPrayer({ offset: +b.dataset.poff }); open(); });
+    root.querySelectorAll("[data-ppages]").forEach(b => b.onclick = () => { setPrayer({ pages: +b.dataset.ppages }); open(); });
+    root.querySelectorAll("[data-pmode]").forEach(b => b.onclick = () => { setPrayer({ mode: b.dataset.pmode }); open(); });
+    if ($("poff")) $("poff").onchange = () => { setPrayer({ offset: parseInt($("poff").value, 10) }); open(); };
+    if ($("ppages")) $("ppages").onchange = () => { setPrayer({ pages: parseInt($("ppages").value, 10) }); open(); };
+    if ($("pwird")) $("pwird").onchange = () => { setPrayer({ wird: $("pwird").value }); open(); };
+    PRAYERS.forEach(p => { if ($("pm-" + p)) $("pm-" + p).onchange = () => { const m = Object.assign({}, P().manual); if ($("pm-" + p).value) m[p] = $("pm-" + p).value; else delete m[p]; setPrayer({ manual: m }); open(); }; });
+    if ($("ical")) $("ical").onchange = () => { setIcal($("ical").value.trim()); };
+    if ($("isync")) $("isync").onclick = () => { setIcal($("ical").value.trim()); syncCalendar(true); };
+    if ($("pnotif")) $("pnotif").onclick = async () => { try { await Notification.requestPermission(); } catch (e) {} scheduleNotifications(); open(); };
+    if ($("ptest")) $("ptest").onclick = async () => {
+      const w = reminderWird(), r = { prayer: P().prayers[0] || "dhuhr", jamat: Date.now() + 30 * 60000, pages: P().pages, day: "test" };
+      const ok = await notify(r); msg("pmsg", ok ? "Sent. It should appear now." : "Could not show a notification. Check your browser settings.", ok ? 1 : 0);
+    };
+    if ($("pcal")) $("pcal").onclick = () => {
+      const now = Date.now(), list = planReminders(P(), now, now + 14 * 86400000);
+      if (!P().prayers.length) { msg("pmsg", "Pick at least one prayer first.", 0); return; }
+      if (!list.length) { msg("pmsg", "No prayer times yet. Read a calendar or type the times in first.", 0); return; }
+      const w = reminderWird(), ics = remindersToIcs(list, { wirdName: w && w.name, page: w && w.page, offset: P().offset, dir: P().dir });
+      try {
+        const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" })), a = document.createElement("a");
+        a.href = url; a.download = "wird-reminders.ics"; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        msg("pmsg", list.length + " reminders ready. Open the file to add them to your calendar.", 1);
+      } catch (e) { msg("pmsg", "Could not create the file on this device.", 0); }
+    };
+  }
 
   // ---------- theme ----------
   const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -128,26 +250,27 @@ export function createWirdApp(root, opts = {}) {
     const a = document.activeElement;
     if (!a || !root.contains(a) || a === document.body) return null;
     if (a.id) return "#" + a.id;
-    for (const k of ["q", "s", "item", "pal", "mode", "type", "by", "dir", "tg", "days", "parts", "open", "new", "jz", "unweak"]) {
+    for (const k of ["q", "s", "item", "pal", "mode", "type", "by", "dir", "tg", "days", "parts", "open", "new", "jz", "unweak", "pray", "pdir", "poff", "ppages", "pmode"]) {
       if (a.dataset && a.dataset[k] !== undefined) return "[data-" + k + '="' + a.dataset[k] + '"]' + (k === "s" ? '[data-a="' + a.dataset.a + '"]' : "");
     }
     return null;
   }
   function paint(html) {
-    const sel = focusSel();
+    const sel = focusSel(), openIds = [...root.querySelectorAll("details[open]")].map(d => d.id).filter(Boolean);
     root.innerHTML = '<div class="wrap">' + html + "</div>";
+    openIds.forEach(id => { const d = root.querySelector("#" + id); if (d) d.open = true; });
     if (sel) { const el = root.querySelector(sel); if (el && el.focus) try { el.focus({ preventScroll: true }); } catch (e) {} }
   }
 
   // ---------- home ----------
-  function home() {
+  function home(openFold) {
     const today = new Date(), total = state.wirds.reduce((s, w) => s + todayN(w), 0), st = streak(state.wirds.map(w => w.log));
     let h = '<header class="top"><div class="brand"><span class="wm">Wird</span><span class="ar" lang="ar">وِرد</span></div><div class="acct-slot"></div></header>' +
       '<p class="date">' + today.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }) + "</p>";
     if (state.wirds.length) {
       let week = '<div class="week" aria-label="This week">';
       for (let i = 6; i >= 0; i--) { const on = state.wirds.some(w => (w.log[daysAgo(i)] || 0) > 0); week += '<span class="' + (on ? "on" : "") + (i === 0 ? " now" : "") + '"><i></i>' + (i === 0 ? "Today" : dateAgo(i).toLocaleDateString("en-GB", { weekday: "narrow" })) + "</span>"; }
-      h += '<div class="summary"><div><strong>' + total + '</strong><span>' + (total === 1 ? "page" : "pages") + ' today</span></div><div><strong>' + st + '</strong><span>day streak</span></div><div><strong>' + state.wirds.length + '</strong><span>' + (state.wirds.length === 1 ? "wird" : "wirds") + "</span></div>" + week + "</div></div>";
+      h += '<div class="summary"><div><strong>' + total + '</strong><span>' + (total === 1 ? "page" : "pages") + ' today</span></div><div><strong>' + st + '</strong><span>day streak</span></div><div><strong>' + state.wirds.length + '</strong><span>' + (state.wirds.length === 1 ? "wird" : "wirds") + "</span></div>" + week + "</div></div>" + nextUpHtml();
     }
     if (!state.wirds.length) {
       h += '<div class="welcome">' + STAR(64, "orn") + '<h2>Keep your place in every wird</h2><p>The page you\'re on in the Madani mushaf and the ayah you stopped at, one tap away. What would you like to track first?</p>' +
@@ -165,19 +288,22 @@ export function createWirdApp(root, opts = {}) {
     });
     if (state.wirds.length && state.wirds.length < MAX_WIRDS) h += '<button class="addcard" data-new="">+ Add a wird</button>';
     const t = Object.assign({}, DEFAULT_THEME, state.theme);
-    h += '<details class="fold"><summary>Appearance</summary><div class="swatches">' +
+    h += '<details class="fold" id="fold-appearance"><summary>Appearance</summary><div class="swatches">' +
       Object.keys(PAL).map(k => { const c = PAL[k].light, d = PAL[k].dark; return '<button class="sw' + (t.pal === k ? " on" : "") + '" data-pal="' + k + '" aria-pressed="' + (t.pal === k) + '"><span><i style="background:' + c[0] + '"></i><i style="background:' + c[6] + '"></i><i style="background:' + c[5] + '"></i><i style="background:' + d[0] + '"></i></span>' + PAL[k].name + "</button>"; }).join("") +
       '</div><div class="seg" style="margin-top:12px">' + [["auto", "Match phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => '<button class="chip' + (t.mode === k ? " on" : "") + '" data-mode="' + k + '" aria-pressed="' + (t.mode === k) + '">' + l + "</button>").join("") + "</div></details>";
-    h += '<details class="fold"><summary>Backup code</summary><p class="muted small">Copy this to keep a backup, or paste one to restore. Signing in with Google keeps everything synced automatically instead.</p>' +
+    h += prayerFold();
+    h += '<details class="fold" id="fold-backup"><summary>Backup code</summary><p class="muted small">Copy this to keep a backup, or paste one to restore. Signing in with Google keeps everything synced automatically instead.</p>' +
       '<div class="row"><button class="btn" id="exp">Show code</button><button class="btn" id="copy" hidden>Copy</button></div>' +
       '<textarea id="bk" spellcheck="false" aria-label="Backup code"></textarea>' +
       '<div class="row"><button class="btn" id="imp">Restore from code</button></div><p class="msg" id="bmsg" role="status"></p></details>' +
       '<p class="foot">Madani mushaf, 604 pages. Page and ayah data checked against alquran.cloud and quran.com.</p>';
     paint(h);
+    if (openFold) { const f = root.querySelector("#" + openFold); if (f) f.open = true; }
+    bindPrayer();
     if (opts.onHome) opts.onHome(root.querySelector(".acct-slot"));
     root.querySelectorAll("[data-open]").forEach(b => b.onclick = () => go("w/" + b.dataset.open));
     root.querySelectorAll("[data-new]").forEach(b => b.onclick = () => go("new" + (b.dataset.new ? "/" + b.dataset.new : "")));
-    const reopen = () => { home(); const f = root.querySelector("details.fold"); if (f) f.open = true; };
+    const reopen = () => home("fold-appearance");
     root.querySelectorAll("[data-pal]").forEach(b => b.onclick = () => { state.theme = Object.assign({}, DEFAULT_THEME, state.theme, { pal: b.dataset.pal }); save(); applyTheme(); reopen(); });
     root.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { state.theme = Object.assign({}, DEFAULT_THEME, state.theme, { mode: b.dataset.mode }); save(); applyTheme(); reopen(); });
     $("exp").onclick = () => { $("bk").value = btoa(unescape(encodeURIComponent(JSON.stringify(state)))); $("copy").hidden = false; };
@@ -194,6 +320,7 @@ export function createWirdApp(root, opts = {}) {
       d.wirds.forEach(w => { w.updatedAt = now; });
       state.wirds.forEach(w => { if (!d.wirds.find(x => x.id === w.id)) d.deleted[w.id] = now; });
       d.theme = d.theme || state.theme;
+      if (!raw.prayer) d.prayer = state.prayer;
       state = d; save(); applyTheme(); home(); msg("bmsg", "Restored " + d.wirds.length + (d.wirds.length === 1 ? " wird." : " wirds."), 1);
     };
   }
@@ -386,7 +513,7 @@ export function createWirdApp(root, opts = {}) {
     const w = find(current.slice(7)); if (!w) return;
     if (e.key === "ArrowRight") { step(w, 1); detail(w); } else if (e.key === "ArrowLeft") { step(w, -1); detail(w); }
   };
-  const onVis = () => { if (!document.hidden && current !== "form") rerenderInPlace(); };
+  const onVis = () => { if (!document.hidden) { scheduleNotifications(); if (staleCalendar()) syncCalendar(false); if (current !== "form") rerenderInPlace(); } };
   function rerenderInPlace() {
     const y = window.scrollY;
     if (current === "home") home(); else if (current.startsWith("detail:")) { const w = find(current.slice(7)); if (w) detail(w); else go(""); }
@@ -397,6 +524,13 @@ export function createWirdApp(root, opts = {}) {
   document.addEventListener("visibilitychange", onVis);
   applyTheme();
   route();
+  scheduleNotifications();
+  if (staleCalendar()) setTimeout(() => syncCalendar(false), 800);
+  // Keep the "next up" line fresh, top up notification timers, and refresh stale calendar data.
+  const ticker = setInterval(() => {
+    if (current === "home") { const el = root.querySelector(".nextup"); if (el || state.prayer.prayers.length) { const html = nextUpHtml(); if (el && html) el.outerHTML = html; } }
+  }, 30000);
+  const topUp = setInterval(() => { scheduleNotifications(); if (staleCalendar()) syncCalendar(false); }, 30 * 60000);
 
   return {
     getState: () => state,
@@ -405,10 +539,11 @@ export function createWirdApp(root, opts = {}) {
       state = mergeStates(state, cleanState(remote));
       save(false);
       applyTheme();
+      scheduleNotifications();
       if (current !== "form") rerenderInPlace();
       return state;
     },
     refreshHome() { if (current === "home") { const y = window.scrollY; home(); window.scrollTo(0, y); } },
-    destroy() { window.removeEventListener("hashchange", route); window.removeEventListener("keydown", onKey); document.removeEventListener("visibilitychange", onVis); }
+    destroy() { clearInterval(ticker); clearInterval(topUp); clearNotifTimers(); window.removeEventListener("hashchange", route); window.removeEventListener("keydown", onKey); document.removeEventListener("visibilitychange", onVis); }
   };
 }

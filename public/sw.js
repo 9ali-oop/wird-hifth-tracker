@@ -17,3 +17,12 @@ self.addEventListener("fetch", e => {
     }).catch(() => caches.match(req).then(m => m || (req.mode === "navigate" ? caches.match("/") : undefined)))
   );
 });
+// Tapping a reminder opens (or focuses) the app.
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(cs => {
+    for (const c of cs) { if ("focus" in c) return c.focus(); }
+    return self.clients.openWindow ? self.clients.openWindow(url) : undefined;
+  }));
+});
