@@ -13,6 +13,7 @@ import { webNotifier } from "./notify-web";
 export { mergeStates, stableKey, PAL };
 
 const KEY = "wird-bookmarks-v3";
+const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 const ICAL_KEY = "wird-ical-url"; // the calendar link is a secret, so it stays on this device and is never synced
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const shortDate = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
@@ -310,7 +311,7 @@ export function createWirdApp(root, opts = {}) {
       '<div class="row"><button class="btn" id="exp">Show code</button><button class="btn" id="copy" hidden>Copy</button></div>' +
       '<textarea id="bk" spellcheck="false" aria-label="Backup code"></textarea>' +
       '<div class="row"><button class="btn" id="imp">Restore from code</button></div><p class="msg" id="bmsg" role="status"></p></details>' +
-      '<p class="foot">Madani mushaf, 604 pages. Page and ayah data checked against alquran.cloud and quran.com.</p>';
+      '<p class="foot">Madani mushaf, 604 pages. Page and ayah data checked against alquran.cloud and quran.com.<br>Wird ' + APP_VERSION + '</p>';
     paint(h);
     if (openFold) { const f = root.querySelector("#" + openFold); if (f) f.open = true; }
     bindPrayer();
