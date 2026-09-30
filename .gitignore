@@ -1,0 +1,46 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+/test-results
+/playwright-report
+
+# production
+/build
+.output
+dist
+
+# env files hold deployment secrets
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.pem
+.cache
+.local
+
+# archives
+*.zip
+*.tar.gz
+*.tar.xz
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# typescript
+*.tsbuildinfo
+
+# generated (rebuilt by the router plugin and by `npx convex dev`)
+src/routeTree.gen.ts
+.tanstack
+.nitro
