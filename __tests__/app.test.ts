@@ -432,3 +432,22 @@ describe("home summary", () => {
     expect(Object.keys(only().log)).toEqual(["2026-9-29"])
   })
 })
+
+describe("merge-safe history", () => {
+  it("every change to today's count, including undo, is stamped", async () => {
+    await makeKhatmah(); await click('[data-q="5"]')
+    const k = dayKey(), t1 = only().logAt[k]
+    expect(t1).toBeGreaterThan(0)
+    await new Promise((r) => setTimeout(r, 5))
+    await click(".toast button")
+    expect(only().log[k]).toBeUndefined()
+    expect(only().logAt[k]).toBeGreaterThan(t1)
+  })
+  it("a deleted wird is kept hidden, so a later edit elsewhere can bring it back whole", async () => {
+    await makeKhatmah("50"); const id = only().id
+    await go("#w/" + id + "/edit"); await click("#fdel"); await click("#fdel")
+    expect(app.getState().wirds).toHaveLength(0)
+    expect(app.getState().gone.map((w: any) => w.id)).toEqual([id])
+    expect($(".welcome")).toBeTruthy()
+  })
+})

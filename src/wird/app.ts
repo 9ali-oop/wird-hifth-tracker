@@ -39,6 +39,7 @@ export function createWirdApp(root, opts = {}) {
   const posOf = w => { const l = pagesOf(w), i = l.indexOf(w.page); return { list: l, i: i < 0 ? 0 : i }; };
 
   function touchW(w) { w.updatedAt = Date.now(); }
+  function stampDay(w, k) { w.logAt = w.logAt || {}; w.logAt[k] = Date.now(); }
   function setPage(w, p, ayah) { w.page = p; w.ayah = ayah || null; touchW(w); save(); }
   function step(w, d) {
     const list = pagesOf(w); let i = list.indexOf(w.page); if (i < 0) i = 0;
@@ -53,6 +54,7 @@ export function createWirdApp(root, opts = {}) {
     const k = dayKey();
     w.log[k] = Math.max(0, (w.log[k] || 0) + moved);
     if (!w.log[k]) delete w.log[k];
+    stampDay(w, k);
     w.page = list[i]; w.ayah = null; touchW(w); save();
     return moved;
   }
@@ -333,7 +335,7 @@ export function createWirdApp(root, opts = {}) {
       const now = Date.now();
       // A restore is a deliberate edit: stamp it as newer so it also wins over the synced copy.
       d.wirds.forEach(w => { w.updatedAt = now; });
-      state.wirds.forEach(w => { if (!d.wirds.find(x => x.id === w.id)) d.deleted[w.id] = now; });
+      state.wirds.forEach(w => { if (!d.wirds.find(x => x.id === w.id)) { d.deleted[w.id] = now; d.gone = [w, ...d.gone.filter(x => x.id !== w.id)]; } });
       d.theme = d.theme || state.theme;
       if (!raw.prayer) d.prayer = state.prayer;
       state = d; save(); applyTheme(); home(); msg("bmsg", "Restored " + d.wirds.length + (d.wirds.length === 1 ? " wird." : " wirds."), 1);
@@ -426,7 +428,10 @@ export function createWirdApp(root, opts = {}) {
     let armed = false;
     if ($("fdel")) $("fdel").onclick = () => {
       if (!armed) { armed = true; $("fdel").textContent = "Tap again to delete"; return; }
-      state.wirds = state.wirds.filter(x => x.id !== d.id); state.deleted[d.id] = Date.now(); save(); go("");
+      const gone = find(d.id);
+      state.wirds = state.wirds.filter(x => x.id !== d.id); state.deleted[d.id] = Date.now();
+      state.gone = [gone, ...(state.gone || []).filter(x => x.id !== d.id)].slice(0, 30);
+      save(); go("");
     };
   }
 
@@ -473,7 +478,8 @@ export function createWirdApp(root, opts = {}) {
       '</select><input id="ja" type="number" inputmode="numeric" min="1" placeholder="Ayah" aria-label="Ayah" class="ayin"><button class="btn primary" id="jgo">Go</button></div><p class="msg" id="jmsg" role="status"></p></section>';
     paint(h);
     const snap = () => JSON.stringify(w);
-    const restore = before => { Object.assign(w, JSON.parse(before)); touchW(w); save(); detail(w); };
+    // Undo puts today's count back, so it is stamped as a fresh change and wins over the synced copy.
+    const restore = before => { Object.assign(w, JSON.parse(before)); stampDay(w, dayKey()); touchW(w); save(); detail(w); };
     const doStep = n => {
       const before = snap(), cyc = w.cycle, moved = step(w, n); vibrate(); detail(w);
       if (n > 0 && w.cycle > cyc) toast(w.round + " " + cyc + " complete. Alhamdulillah!", () => restore(before));

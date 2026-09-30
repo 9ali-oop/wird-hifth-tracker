@@ -24,9 +24,9 @@ function act(state: any, r: () => number, clock: { t: number }, allowDelete = tr
   if (pick === 2 && !allowDelete) pick = 1
   const w = s.wirds.length ? s.wirds[Math.floor(r() * s.wirds.length)] : null
   if (pick === 0 && w) { const pages = parseRanges(w.ranges)!; w.page = pages[Math.floor(r() * pages.length)]; w.updatedAt = clock.t }
-  else if (pick === 1 && w) { const k = "2026-9-" + (26 + Math.floor(r() * 5)); w.log[k] = Math.floor(r() * 30); if (!w.log[k]) delete w.log[k]; w.updatedAt = clock.t }
-  else if (pick === 2 && w) { s.wirds = s.wirds.filter((x: any) => x !== w); s.deleted[w.id] = clock.t }
-  else if (pick === 3) { const id = "n" + Math.floor(r() * 6); if (!s.wirds.find((x: any) => x.id === id)) s.wirds.push({ id, name: id, type: "custom", round: "Round", ranges: "1-10", dir: 1, target: 0, parts: 0, page: 1, ayah: null, cycle: 1, log: {}, weak: [], sel: null, createdAt: clock.t, updatedAt: clock.t }) }
+  else if (pick === 1 && w) { const k = "2026-9-" + (26 + Math.floor(r() * 5)); w.log[k] = Math.floor(r() * 30); if (!w.log[k]) delete w.log[k]; w.logAt[k] = clock.t; w.updatedAt = clock.t }
+  else if (pick === 2 && w) { s.wirds = s.wirds.filter((x: any) => x !== w); s.gone = [w, ...(s.gone || []).filter((x: any) => x.id !== w.id)]; s.deleted[w.id] = clock.t }
+  else if (pick === 3) { const id = "n" + Math.floor(r() * 6); if (!s.wirds.find((x: any) => x.id === id)) s.wirds.push({ id, name: id, type: "custom", round: "Round", ranges: "1-10", dir: 1, target: 0, parts: 0, page: 1, ayah: null, cycle: 1, log: {}, logAt: {}, weak: [], sel: null, createdAt: clock.t, updatedAt: clock.t }) }
   else if (w) { w.weak = [...new Set([...(w.weak || []), parseRanges(w.ranges)![0]])].sort((a: number, b: number) => a - b); w.updatedAt = clock.t }
   s.updatedAt = clock.t
   return s
@@ -47,9 +47,32 @@ describe("sync convergence (randomised)", () => {
     }
   })
 
-  // Not claimed: strict associativity. A day's count follows the newest copy of a wird, and once merged the per-day
-  // origin is gone, so regrouping a three-way merge can change a day count. What matters is that devices converge
-  // when they sync through the server, which the next two tests check with two and three devices.
+  it("merge is associative across three devices, deletions included", () => {
+    for (let seed = 1; seed <= 400; seed++) {
+      const r = rng(seed * 7)
+      const cs = [{ t: 100 }, { t: 100 }, { t: 100 }]
+      let d = [base(), base(), base()]
+      for (let i = 0; i < 6; i++) d = d.map((x, k) => act(x, r, cs[k]))
+      const l = mergeStates(mergeStates(d[0], d[1]), d[2])
+      const rr = mergeStates(d[0], mergeStates(d[1], d[2]))
+      const m = mergeStates(mergeStates(d[2], d[0]), d[1])
+      expect(stableKey(l), `seed ${seed}`).toBe(stableKey(rr))
+      expect(stableKey(m), `seed ${seed} other order`).toBe(stableKey(l))
+    }
+  })
+
+  it("an edit made after a deletion on another device brings the wird back with every day intact", () => {
+    const A = base(), B = JSON.parse(JSON.stringify(A)), C = JSON.parse(JSON.stringify(A))
+    A.wirds[0].log["2026-9-27"] = 9; A.wirds[0].logAt["2026-9-27"] = 150; A.wirds[0].updatedAt = 150
+    B.gone = [B.wirds[0]]; B.wirds = B.wirds.slice(1); B.deleted.a1 = 200
+    C.wirds[0].log["2026-9-29"] = 4; C.wirds[0].logAt["2026-9-29"] = 300; C.wirds[0].updatedAt = 300
+    const viaDeletionFirst = mergeStates(mergeStates(A, B), C)
+    const w = viaDeletionFirst.wirds.find((x: any) => x.id === "a1")
+    expect(w).toBeTruthy()
+    expect(w.log).toMatchObject({ "2026-9-27": 9, "2026-9-28": 5, "2026-9-29": 4 })
+    expect(stableKey(viaDeletionFirst)).toBe(stableKey(mergeStates(A, mergeStates(B, C))))
+  })
+
   it("three devices syncing through a server in random order all converge", () => {
     for (let seed = 1; seed <= 200; seed++) {
       const r = rng(seed * 31)
@@ -104,10 +127,10 @@ describe("sync convergence (randomised)", () => {
 
   it("an undo on one device reaches the other", () => {
     const A = base(), B = JSON.parse(JSON.stringify(base()))
-    A.wirds[0].log["2026-9-30"] = 10; A.wirds[0].updatedAt = 200; A.updatedAt = 200
+    A.wirds[0].log["2026-9-30"] = 10; A.wirds[0].logAt["2026-9-30"] = 200; A.wirds[0].updatedAt = 200; A.updatedAt = 200
     const synced = mergeStates(B, A)
     const undone = JSON.parse(JSON.stringify(synced))
-    undone.wirds[0].log["2026-9-30"] = 4; undone.wirds[0].updatedAt = 300; undone.updatedAt = 300
+    undone.wirds[0].log["2026-9-30"] = 4; undone.wirds[0].logAt["2026-9-30"] = 300; undone.wirds[0].updatedAt = 300; undone.updatedAt = 300
     expect(mergeStates(A, undone).wirds[0].log["2026-9-30"]).toBe(4)
     expect(mergeStates(undone, A).wirds[0].log["2026-9-30"]).toBe(4)
   })

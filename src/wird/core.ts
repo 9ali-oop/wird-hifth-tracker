@@ -6,6 +6,8 @@ import { cleanPrayer } from "./prayer";
 export const PAGES = 604;
 export const MAX_WIRDS = 30;
 export const MAX_LOG_DAYS = 400;
+export const MAX_GONE = 30;
+export const MAX_TOMBSTONES = 200;
 
 // ---------- Qur'an helpers (Madani 604-page mushaf) ----------
 const cmp = (a: number[], b: number[]) => a[0] - b[0] || a[1] - b[1];
@@ -153,8 +155,11 @@ export function cleanWird(raw: any, fallbackCreated = 0): any | null {
   w.log = {};
   const log = { ...(raw.today && raw.today.date && raw.today.n ? { [raw.today.date]: raw.today.n } : {}), ...(raw.log && typeof raw.log === "object" ? raw.log : {}) };
   Object.keys(log).forEach((k) => { if (KEY_RE.test(k)) { const n = int(log[k], 0, 5000, 0); if (n) w.log[k] = n; } });
-  const days = Object.keys(w.log).sort((a, b) => dateVal(a) - dateVal(b));
-  if (days.length > MAX_LOG_DAYS) days.slice(0, days.length - MAX_LOG_DAYS).forEach((k) => delete w.log[k]);
+  // When each day's count was last changed, so two devices can merge day by day. A day can have a time and no
+  // count: that records a count taken back to zero.
+  w.logAt = {};
+  if (raw.logAt && typeof raw.logAt === "object") Object.keys(raw.logAt).forEach((k) => { if (KEY_RE.test(k)) { const t = int(raw.logAt[k], 0, 8.64e15, 0); if (t) w.logAt[k] = t; } });
+  trimLog(w);
   w.weak = Array.isArray(raw.weak) ? [...new Set<number>(raw.weak.map((p: unknown) => int(p, 0, PAGES, 0)).filter((p: number) => p && pages.includes(p)))].sort((a, b) => a - b) : [];
   w.sel = null;
   if (raw.sel && typeof raw.sel === "object" && (raw.sel.by === "surah" || raw.sel.by === "juz") && Array.isArray(raw.sel.items)) {
@@ -167,10 +172,14 @@ export function cleanWird(raw: any, fallbackCreated = 0): any | null {
   w.updatedAt = int(raw.updatedAt, 0, 8.64e15, 0);
   return w;
 }
+function trimLog(w: any) {
+  const days = [...new Set([...Object.keys(w.log), ...Object.keys(w.logAt)])].sort((a, b) => dateVal(a) - dateVal(b));
+  if (days.length > MAX_LOG_DAYS) days.slice(0, days.length - MAX_LOG_DAYS).forEach((k) => { delete w.log[k]; delete w.logAt[k]; });
+}
 const dateVal = (k: string) => { const [y, m, d] = k.split("-").map(Number); return y * 10000 + m * 100 + d; };
 
 export function cleanState(raw: any): any {
-  const out: any = { v: 5, wirds: [], deleted: {}, updatedAt: 0, prayer: cleanPrayer(null) };
+  const out: any = { v: 5, wirds: [], gone: [], deleted: {}, updatedAt: 0, prayer: cleanPrayer(null) };
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.wirds)) return out;
   out.prayer = cleanPrayer(raw.prayer);
   const seen = new Set<string>();
@@ -183,10 +192,15 @@ export function cleanState(raw: any): any {
     if (out.wirds.length >= MAX_WIRDS) break;
   }
   if (raw.deleted && typeof raw.deleted === "object") {
-    Object.keys(raw.deleted).slice(0, 200).forEach((id) => {
-      const t = int(raw.deleted[id], 0, 8.64e15, 0);
-      if (t && /^[a-z0-9]{1,24}$/.test(id)) out.deleted[id] = t;
-    });
+    const ok = Object.keys(raw.deleted).map((id) => [id, int(raw.deleted[id], 0, 8.64e15, 0)] as [string, number]).filter(([id, t]) => t && /^[a-z0-9]{1,24}$/.test(id));
+    ok.sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1)).slice(0, MAX_TOMBSTONES).forEach(([id, t]) => { out.deleted[id] = t; });
+  }
+  // Deleted wirds are kept (hidden) so a merge never loses data that a later edit on another device brings back.
+  if (Array.isArray(raw.gone)) {
+    for (let i = 0; i < raw.gone.length && out.gone.length < MAX_GONE; i++) {
+      const w = cleanWird(raw.gone[i], i + 1);
+      if (w && !seen.has(w.id)) { seen.add(w.id); out.gone.push(w); }
+    }
   }
   if (raw.theme && typeof raw.theme === "object") {
     const pal = typeof raw.theme.pal === "string" ? raw.theme.pal : "sage";
@@ -198,29 +212,48 @@ export function cleanState(raw: any): any {
 }
 
 // ---------- merge (two devices) ----------
-// Position, target and settings follow whichever copy of a wird was changed last. The day log follows the
-// same winner, so undoing or lowering a day's count on one device also sticks on the other; days that only
-// the older copy knows about are kept.
+// A merge that gives the same answer whatever order devices sync in (commutative, associative, idempotent):
+// - a wird's settings and position follow whichever copy was changed last (ties broken on content);
+// - each day's count follows whichever copy changed that day last, so an undo on one device reaches the others
+//   and days only one copy knows about are kept;
+// - deletions are timestamps, and deleted wirds are kept hidden rather than dropped, so an edit made later on
+//   another device brings the wird back with all its days.
+const fieldsKey = (w: any) => JSON.stringify(norm({ ...w, log: null, logAt: null }));
+function mergeWird(x: any, y: any): any {
+  const dt = (x.updatedAt || 0) - (y.updatedAt || 0);
+  const pick = dt > 0 || (dt === 0 && fieldsKey(x) >= fieldsKey(y)) ? x : y;
+  const log: Record<string, number> = {}, logAt: Record<string, number> = {};
+  const keys = new Set([...Object.keys(x.log || {}), ...Object.keys(x.logAt || {}), ...Object.keys(y.log || {}), ...Object.keys(y.logAt || {})]);
+  for (const k of keys) {
+    const has = (w: any) => (w.log && k in w.log) || (w.logAt && k in w.logAt);
+    const tx = has(x) ? (x.logAt && x.logAt[k]) || x.updatedAt || 0 : -1, ty = has(y) ? (y.logAt && y.logAt[k]) || y.updatedAt || 0 : -1;
+    const nx = (x.log && x.log[k]) || 0, ny = (y.log && y.log[k]) || 0;
+    const useX = tx > ty || (tx === ty && nx >= ny);
+    logAt[k] = useX ? tx : ty;
+    const n = useX ? nx : ny;
+    if (n) log[k] = n;
+  }
+  const out = { ...pick, log, logAt };
+  trimLog(out);
+  return out;
+}
+const byCreated = (x: any, y: any) => (x.createdAt || 0) - (y.createdAt || 0) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
+
 export function mergeStates(a: any, b: any): any {
   if (!a) return b;
   if (!b) return a;
   const newer = (b.updatedAt || 0) >= (a.updatedAt || 0) ? b : a;
-  const deleted: Record<string, number> = { ...(a.deleted || {}) };
-  Object.keys(b.deleted || {}).forEach((id) => { deleted[id] = Math.max(deleted[id] || 0, b.deleted[id] || 0); });
+  const del: Record<string, number> = { ...(a.deleted || {}) };
+  Object.keys(b.deleted || {}).forEach((id) => { del[id] = Math.max(del[id] || 0, b.deleted[id] || 0); });
+  const deleted: Record<string, number> = {};
+  Object.keys(del).sort((x, y) => del[y] - del[x] || (x < y ? -1 : 1)).slice(0, MAX_TOMBSTONES).forEach((id) => { deleted[id] = del[id]; });
   const byId: Record<string, any> = {};
-  [...(a.wirds || []), ...(b.wirds || [])].forEach((w) => {
-    const cur = byId[w.id];
-    if (!cur) { byId[w.id] = w; return; }
-    const dt = (w.updatedAt || 0) - (cur.updatedAt || 0);
-    // Equal timestamps: break the tie on content so the result never depends on argument order.
-    const pick = dt > 0 || (dt === 0 && JSON.stringify(norm(w)) > JSON.stringify(norm(cur))) ? w : cur;
-    const other = pick === w ? cur : w;
-    byId[w.id] = Object.assign({}, pick, { log: Object.assign({}, other.log || {}, pick.log || {}) });
-  });
+  for (const w of [...(a.wirds || []), ...(a.gone || []), ...(b.wirds || []), ...(b.gone || [])]) byId[w.id] = byId[w.id] ? mergeWird(byId[w.id], w) : w;
+  const all = Object.values(byId);
+  const isGone = (w: any) => deleted[w.id] !== undefined && deleted[w.id] >= (w.updatedAt || 0);
   // Cards are ordered by when they were created (then id), so every device lands on the same order.
-  const wirds = Object.values(byId)
-    .filter((w: any) => !(deleted[w.id] && deleted[w.id] >= (w.updatedAt || 0)))
-    .sort((x: any, y: any) => (x.createdAt || 0) - (y.createdAt || 0) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+  const wirds = all.filter((w) => !isGone(w)).sort(byCreated);
+  const gone = all.filter(isGone).sort((x: any, y: any) => deleted[y.id] - deleted[x.id] || (x.id < y.id ? -1 : 1)).slice(0, MAX_GONE);
   // Reminder settings follow whichever copy was edited last; the calendar-derived days follow whichever was read last.
   const pa = a.prayer, pb = b.prayer;
   let prayer = pa || pb;
@@ -229,7 +262,7 @@ export function mergeStates(a: any, b: any): any {
     const fresh = (pb.syncedAt || 0) > (pa.syncedAt || 0) || ((pb.syncedAt || 0) === (pa.syncedAt || 0) && JSON.stringify(norm(pb.days)) > JSON.stringify(norm(pa.days))) ? pb : pa;
     prayer = { ...win, days: fresh.days, syncedAt: fresh.syncedAt };
   }
-  return { v: 5, wirds, deleted, theme: newer.theme || a.theme || b.theme, prayer, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0) };
+  return { v: 5, wirds, gone, deleted, theme: newer.theme || a.theme || b.theme, prayer, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0) };
 }
 
 const norm = (v: any): any =>
@@ -237,5 +270,5 @@ const norm = (v: any): any =>
 
 // Order-insensitive fingerprint, used to tell whether a merge changed anything.
 export function stableKey(s: any): string {
-  return JSON.stringify(norm({ wirds: (s && s.wirds) || [], deleted: (s && s.deleted) || {}, theme: (s && s.theme) || null, prayer: (s && s.prayer) || null }));
+  return JSON.stringify(norm({ wirds: (s && s.wirds) || [], gone: (s && s.gone) || [], deleted: (s && s.deleted) || {}, theme: (s && s.theme) || null, prayer: (s && s.prayer) || null }));
 }
